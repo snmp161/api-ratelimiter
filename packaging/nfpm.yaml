@@ -1,0 +1,37 @@
+name: ratelimiter
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: 1
+section: net
+priority: optional
+maintainer: Infrastructure <infra@example.com>
+description: |
+  HTTP rate limiter for API servers using nginx/Angie auth_request.
+  Provides a /check endpoint that returns 200 / 429 based on per-key
+  limits stored in Redis and in-memory fixed-window counters.
+homepage: https://example.com/ratelimiter
+license: Proprietary
+
+depends:
+  - adduser
+
+contents:
+  - src: ./ratelimiter
+    dst: /usr/bin/ratelimiter
+    file_info:
+      mode: 0755
+      owner: root
+      group: root
+
+  - src: ./configs/ratelimiter.service
+    dst: /lib/systemd/system/ratelimiter.service
+    file_info:
+      mode: 0644
+      owner: root
+      group: root
+
+scripts:
+  postinstall: ./packaging/scripts/postinstall.sh
+  preremove:   ./packaging/scripts/preremove.sh
+  postremove:  ./packaging/scripts/postremove.sh

@@ -1,0 +1,41 @@
+{{template "head" .}}
+<h1>{{.Title}}</h1>
+<p class="small muted">Counters that crossed the abuse threshold and got transferred to Redis.</p>
+
+{{template "top_unknown" .}}
+
+<h2>API-keys entries in Redis</h2>
+{{template "actions" .}}
+
+<form id="action-form" method="post">
+<table>
+  <tr>
+    <th class="cb"></th>
+    <th>api_key</th>
+    <th>first seen</th>
+    <th>last seen</th>
+    <th>total</th>
+    <th>burst</th>
+    <th>windows over</th>
+    <th>TTL</th>
+  </tr>
+  {{range .Rows}}
+  <tr>
+    <td class="cb"><input type="checkbox" name="keys" value="{{.Key}}"></td>
+    <td><code>{{.Key}}</code></td>
+    <td>{{fmtTime .FirstSeen}}</td>
+    <td>{{fmtTime .LastSeen}}</td>
+    <td>{{.Total}}</td>
+    <td>{{.BurstHits}}</td>
+    <td>{{.AbuseHits}}</td>
+    <td>{{fmtDuration .TTL}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="8" class="muted">no entries</td></tr>
+  {{end}}
+</table>
+</form>
+
+{{template "pager" .}}
+{{template "actions_script" .}}
+{{template "tail" .}}

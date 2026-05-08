@@ -1,0 +1,49 @@
+[Unit]
+Description=API Rate Limiter
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/ratelimiter \
+    --listen unix:/run/ratelimiter/ratelimit.sock \
+    --socket-mode 0666 \
+    --admin-listen 127.0.0.1:8080 \
+    --metrics-listen 127.0.0.1:9091 \
+    --redis-addr 127.0.0.1:6379 \
+    --log-level info \
+    --log-format json \
+    --global-limit 100 \
+    --burst 20 \
+    --window second \
+    --cleanup-interval 15 \
+    --abuse-ttl 15 \
+    --abuse-multiplier 10 \
+    --abuse-transfer-threshold 3
+RuntimeDirectory=ratelimiter
+RuntimeDirectoryMode=0755
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+
+# Resource limits. Tune to your traffic profile; defaults below are sized
+# for ~5k RPS on a single instance.
+LimitNOFILE=65536
+LimitNPROC=4096
+TasksMax=4096
+MemoryMax=1G
+MemoryHigh=768M
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

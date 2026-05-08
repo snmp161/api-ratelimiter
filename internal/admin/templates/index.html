@@ -1,0 +1,29 @@
+{{template "head" .}}
+<h1>ratelimiter — status</h1>
+
+<table>
+  <tr><th>Version</th><td><code>{{.Version}}</code></td></tr>
+  <tr><th>Uptime</th><td>{{.Uptime}}</td></tr>
+  <tr><th>Now</th><td>{{.Now}}</td></tr>
+  <tr><th>Redis</th><td>{{if .RedisOK}}<span class="ok">OK</span>{{else}}<span class="err">unreachable</span>{{end}}</td></tr>
+</table>
+
+<h2>Flags</h2>
+<table>
+  <tr><th>flag</th><th>value</th></tr>
+  {{range .FlagRows}}<tr><td><code>{{.Name}}</code></td><td>{{.Value}}</td></tr>{{end}}
+</table>
+
+<h2>Metrics</h2>
+<p class="small muted">Counter values are cumulative since process start. Use Prometheus <code>rate()</code>/<code>increase()</code> for rates.</p>
+<table>
+  <tr><th>metric</th><th>type</th><th>value</th><th>help</th></tr>
+  {{range .MetricRows}}<tr>
+    <td><code>{{.Name}}</code></td>
+    <td><span class="small muted">{{.Type}}</span></td>
+    <td>{{.Value}}</td>
+    <td class="small muted">{{.Help}}</td>
+  </tr>{{end}}
+</table>
+
+{{template "tail" .}}

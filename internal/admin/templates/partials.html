@@ -1,0 +1,188 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{.Title}} — ratelimiter</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 1.5em; color: #222; }
+  h1, h2 { margin-top: 1.5em; font-weight: 600; }
+  nav { margin-bottom: 1.5em; }
+  nav a { margin-right: 1em; text-decoration: none; color: #06c; }
+  nav a:hover { text-decoration: underline; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92em; }
+  th, td { padding: 0.45em 0.7em; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
+  th { background: #fafafa; font-weight: 600; }
+  tr:hover td { background: #f8fbff; }
+  code { background: #f3f3f3; padding: 0.05em 0.4em; border-radius: 3px; font-size: 0.92em; }
+  .muted { color: #888; }
+  .ok { color: #2a8a3a; }
+  .err { color: #b22; }
+  .pager { margin-top: 1em; }
+  .pager a, .pager span.disabled {
+    padding: 0.3em 0.7em; border: 1px solid #ddd; border-radius: 3px;
+    text-decoration: none; color: #06c; margin-right: 0.4em; display: inline-block;
+  }
+  .pager span.disabled { color: #bbb; border-color: #eee; }
+  form.search { margin: 0; }
+  form.search input[type=text] { padding: 0.3em 0.5em; border: 1px solid #ccc; border-radius: 3px; min-width: 18em; }
+  form.search button { padding: 0.3em 0.9em; border: 1px solid #ccc; background: #fafafa; border-radius: 3px; cursor: pointer; }
+  .small { font-size: 0.85em; color: #666; }
+  .actions { display: flex; gap: 0.5em; align-items: center; flex-wrap: wrap; margin: 0.6em 0 1em; }
+  .btn-warn   { padding: 0.3em 0.9em; border: 1px solid #c84; background: #fec; color: #964; border-radius: 3px; cursor: pointer; }
+  .btn-danger { padding: 0.3em 0.9em; border: 1px solid #c44; background: #fdd; color: #b22; border-radius: 3px; cursor: pointer; font-weight: 600; }
+  .btn-cancel { padding: 0.3em 0.9em; border: 1px solid #aaa; background: #f3f3f3; color: #444; border-radius: 3px; text-decoration: none; display: inline-block; }
+  .btn-warn:disabled, .btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+  .warn-banner { background: #fdd; border: 1px solid #c44; color: #800; padding: 0.7em 1em; border-radius: 4px; margin: 1em 0; }
+  .warn-banner .row { margin-top: 0.6em; display: flex; gap: 0.5em; }
+  td.cb, th.cb { width: 2em; text-align: center; padding-left: 0.4em; padding-right: 0.4em; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="/">status</a>
+  <a href="/limits">limits</a>
+  <a href="/abuse/keys">abuse keys</a>
+  <a href="/abuse/ips">abuse ips</a>
+</nav>{{end}}
+
+{{define "tail"}}</body></html>{{end}}
+
+{{define "pager"}}
+<div class="pager">
+  {{if .HasPrev}}<a href="?page={{sub .Page 1}}{{if .Q}}&q={{.Q}}{{end}}">← prev</a>{{else}}<span class="disabled">← prev</span>{{end}}
+  <span class="muted">page {{.Page}} · {{.Total}} rows</span>
+  {{if .HasNext}}<a href="?page={{add .Page 1}}{{if .Q}}&q={{.Q}}{{end}}">next →</a>{{else}}<span class="disabled">next →</span>{{end}}
+</div>{{end}}
+
+{{define "search"}}
+<form class="search" method="get">
+  <input type="text" name="q" value="{{.Q}}" placeholder="search…">
+  <button type="submit">search</button>
+  {{if .Q}}<a href="?" class="muted small">clear</a>{{end}}
+</form>{{end}}
+
+{{/* "actions" combines search + Delete (selected) + Purge (whole DB) on
+     a single line. Buttons reference the action-form by id and override
+     its action via formaction. The action-form wraps the table below.
+
+     Without JS:
+       - Delete submits with current selection (server redirects back if empty).
+       - Purge submits, server returns the two-step confirmation page.
+     With JS (see "actions_script" below):
+       - Delete is disabled until at least one checkbox is checked.
+       - Purge opens an inline Yes/No banner instead of round-tripping. */}}
+{{define "actions"}}
+<div class="actions">
+  {{template "search" .}}
+  <button id="btn-delete" type="submit" form="action-form" formaction="{{.DeleteAction}}" class="btn-warn">Delete selected</button>
+  <button id="btn-purge"  type="submit" form="action-form" formaction="{{.PurgeAction}}"  class="btn-danger">Purge all</button>
+</div>
+
+<div id="purge-confirm" class="warn-banner" hidden>
+  <strong>Purge entire DB?</strong>
+  This permanently deletes all entries and cannot be undone.
+  <div class="row">
+    <button type="submit" form="action-form" formaction="{{.PurgeAction}}" name="confirm" value="yes" class="btn-danger">Yes, purge</button>
+    <button type="button" id="btn-purge-no" class="btn-cancel">No</button>
+  </div>
+</div>{{end}}
+
+{{/* Top-25 table for KnownCounters (used on /limits). Default sort is
+     by violations; total and burst are clickable to switch. The active
+     sort column shows ↓; inactive ones are links that preserve q/page. */}}
+{{define "top_known"}}
+<h2>Top {{len .TopRows}} from KnownCounters (in-memory)</h2>
+{{if .TopRows}}
+<p class="small muted">Sorted live from in-memory counters; resets on service restart.</p>
+<table>
+  <tr>
+    <th>api_key</th>
+    {{if eq .TopSort "total"}}<th>total ↓</th>{{else}}<th><a href="{{topsortURL .BasePath "total" .Q .Page}}">total</a></th>{{end}}
+    {{if eq .TopSort "burst"}}<th>burst ↓</th>{{else}}<th><a href="{{topsortURL .BasePath "burst" .Q .Page}}">burst</a></th>{{end}}
+    {{if eq .TopSort "violations"}}<th>violations ↓</th>{{else}}<th><a href="{{topsortURL .BasePath "violations" .Q .Page}}">violations</a></th>{{end}}
+  </tr>
+  {{range .TopRows}}
+  <tr>
+    <td><code>{{.Key}}</code></td>
+    <td>{{.Total}}</td>
+    <td>{{.BurstHits}}</td>
+    <td>{{.ViolationHits}}</td>
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<p class="small muted">No active counters.</p>
+{{end}}{{end}}
+
+{{/* Top-25 table for UnknownCounters. `KeyHeader` controls the first
+     column label (api_key for /abuse/keys, IP for /abuse/ips). Default
+     sort is by abuse; total and burst are clickable. */}}
+{{define "top_unknown"}}
+<h2>Top {{len .TopRows}} from UnknownCounters (in-memory)</h2>
+{{if .TopRows}}
+<p class="small muted">Sorted live from in-memory counters; resets on service restart.</p>
+<table>
+  <tr>
+    <th>{{.KeyHeader}}</th>
+    {{if eq .TopSort "total"}}<th>total ↓</th>{{else}}<th><a href="{{topsortURL .BasePath "total" .Q .Page}}">total</a></th>{{end}}
+    {{if eq .TopSort "burst"}}<th>burst ↓</th>{{else}}<th><a href="{{topsortURL .BasePath "burst" .Q .Page}}">burst</a></th>{{end}}
+    {{if eq .TopSort "abuse"}}<th>abuse ↓</th>{{else}}<th><a href="{{topsortURL .BasePath "abuse" .Q .Page}}">abuse</a></th>{{end}}
+  </tr>
+  {{range .TopRows}}
+  <tr>
+    <td><code>{{.Key}}</code></td>
+    <td>{{.Total}}</td>
+    <td>{{.BurstHits}}</td>
+    <td>{{.AbuseHits}}</td>
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<p class="small muted">No active counters with this prefix.</p>
+{{end}}{{end}}
+
+{{/* Minimal inline JS for the actions widget. Pure UX: Delete is
+     disabled until something is selected, Purge opens the inline
+     confirm panel. Server-side handlers still validate, so disabling
+     JS only loses the convenience layer. */}}
+{{define "actions_script"}}
+<script>
+(function () {
+  var form = document.getElementById('action-form');
+  if (!form) return;
+
+  var checkboxes = form.querySelectorAll('input[type=checkbox][name=keys]');
+  var btnDelete  = document.getElementById('btn-delete');
+  var btnPurge   = document.getElementById('btn-purge');
+  var confirmBox = document.getElementById('purge-confirm');
+  var btnPurgeNo = document.getElementById('btn-purge-no');
+
+  function refresh() {
+    if (!btnDelete) return;
+    var any = false;
+    for (var i = 0; i < checkboxes.length; i++) {
+      if (checkboxes[i].checked) { any = true; break; }
+    }
+    btnDelete.disabled = !any;
+  }
+  for (var i = 0; i < checkboxes.length; i++) {
+    checkboxes[i].addEventListener('change', refresh);
+  }
+  refresh();
+
+  if (btnPurge && confirmBox) {
+    btnPurge.addEventListener('click', function (e) {
+      e.preventDefault();
+      confirmBox.hidden = false;
+      btnPurge.disabled = true;
+    });
+  }
+  if (btnPurgeNo && confirmBox) {
+    btnPurgeNo.addEventListener('click', function (e) {
+      e.preventDefault();
+      confirmBox.hidden = true;
+      if (btnPurge) btnPurge.disabled = false;
+    });
+  }
+})();
+</script>{{end}}

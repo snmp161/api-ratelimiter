@@ -1,0 +1,39 @@
+{{template "head" .}}
+<h1>{{.Title}}</h1>
+<p class="small muted">Individual per-key limits stored in Redis. Counter columns come from in-memory KnownCounters; "—" means no active counter.</p>
+
+{{template "top_known" .}}
+
+<h2>Individual API-keys limits entries in Redis</h2>
+{{template "actions" .}}
+
+<form id="action-form" method="post">
+<table>
+  <tr>
+    <th class="cb"></th>
+    <th>api_key</th>
+    <th>limit (req/window)</th>
+    <th>created</th>
+    <th>total requests</th>
+    <th>windows over limit</th>
+    <th>burst requests</th>
+  </tr>
+  {{range .Rows}}
+  <tr>
+    <td class="cb"><input type="checkbox" name="keys" value="{{.APIKey}}"></td>
+    <td><code>{{.APIKey}}</code></td>
+    <td>{{.Limit}}</td>
+    <td>{{fmtTime .CreatedAt}}</td>
+    <td>{{if eq .Total 0}}<span class="muted">—</span>{{else}}{{.Total}}{{end}}</td>
+    <td>{{if eq .WindowsAbove 0}}<span class="muted">—</span>{{else}}{{.WindowsAbove}}{{end}}</td>
+    <td>{{if eq .BurstRequests 0}}<span class="muted">—</span>{{else}}{{.BurstRequests}}{{end}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="7" class="muted">no entries</td></tr>
+  {{end}}
+</table>
+</form>
+
+{{template "pager" .}}
+{{template "actions_script" .}}
+{{template "tail" .}}
