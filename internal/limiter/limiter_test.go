@@ -109,12 +109,12 @@ func TestRouting_RedisErrorFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-func TestRouting_NoKeyAndNoIPFailSafe(t *testing.T) {
+func TestRouting_NoKeyNoIPFailOpenWithoutKey(t *testing.T) {
 	store := &fakeStore{limits: map[string]int64{}}
 	l := newTestLimiter(t, store, 1, 0, 10)
 	for i := 0; i < 5; i++ {
 		if !l.Decide(context.Background(), "", "") {
-			t.Fatalf("req %d: must be allowed (fail safe)", i)
+			t.Fatalf("req %d: must be allowed (fail open without key)", i)
 		}
 	}
 }

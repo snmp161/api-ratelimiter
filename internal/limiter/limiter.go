@@ -52,7 +52,8 @@ func New(
 // the request should be allowed. Never panics — caller still has fail-open
 // recover, but Decide itself is defensive too.
 func (l *Limiter) Decide(ctx context.Context, apiKey, ip string) bool {
-	// Edge case: nothing to key on. Fail safe → allow.
+	// Fail open without key: nothing to limit by — allow. Used for
+	// keyless service paths that still pass through auth_request.
 	if apiKey == "" && ip == "" {
 		l.metrics.RequestsAllowed.Inc()
 		return true

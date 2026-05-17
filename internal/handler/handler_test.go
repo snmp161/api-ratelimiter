@@ -142,7 +142,7 @@ func TestCheck_KeyPriorityQueryOverOriginalURI(t *testing.T) {
 	}
 }
 
-func TestCheck_NoHeadersFailSafe(t *testing.T) {
+func TestCheck_NoHeadersFailOpenWithoutKey(t *testing.T) {
 	d := &spyDecider{allow: true}
 	h := newTestCheck(d)
 	r := httptest.NewRequest("GET", "/check", nil)
