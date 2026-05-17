@@ -2,7 +2,10 @@ package admin
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -39,6 +42,13 @@ type Server struct {
 	startedAt time.Time
 	version   string
 	tpl       *template.Template
+	// csrfToken is generated once per process at New(). Every form embeds
+	// it as a hidden input; every state-changing POST validates it. A
+	// process-scoped token (vs per-session) is enough here: the admin has
+	// no auth, so we only defend against cross-origin POST forgery — the
+	// attacker can't read the rendered page from another origin, so they
+	// can't learn the token. Rotates on restart.
+	csrfToken string
 }
 
 func New(
@@ -84,6 +94,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	token, err := newCSRFToken()
+	if err != nil {
+		return nil, fmt.Errorf("csrf token: %w", err)
+	}
 	return &Server{
 		cfg:       cfg,
 		known:     known,
@@ -94,7 +108,28 @@ func New(
 		startedAt: startedAt,
 		version:   version,
 		tpl:       tpl,
+		csrfToken: token,
 	}, nil
+}
+
+func newCSRFToken() (string, error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
+}
+
+// checkCSRF verifies the csrf_token form value matches the server's
+// process-scoped token. Returns true and answers 403 on mismatch.
+func (s *Server) checkCSRF(w http.ResponseWriter, r *http.Request) bool {
+	got := r.PostFormValue("csrf_token")
+	if subtle.ConstantTimeCompare([]byte(got), []byte(s.csrfToken)) != 1 {
+		s.logger.Warn("admin csrf rejected", "path", r.URL.Path, "remote", r.RemoteAddr)
+		http.Error(w, "csrf token invalid", http.StatusForbidden)
+		return false
+	}
+	return true
 }
 
 func (s *Server) Routes() http.Handler {
@@ -336,6 +371,7 @@ type limitsPage struct {
 	PurgeAction  string
 	TopRows      []knownTopRow
 	TopSort      string
+	CSRFToken    string
 }
 
 func (s *Server) handleLimits(w http.ResponseWriter, r *http.Request) {
@@ -394,6 +430,7 @@ func (s *Server) handleLimits(w http.ResponseWriter, r *http.Request) {
 		PurgeAction:  "/limits/purge",
 		TopRows:      s.topKnown(topSort),
 		TopSort:      topSort,
+		CSRFToken:    s.csrfToken,
 	})
 }
 
@@ -501,6 +538,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request, cfg abuseCo
 		TopRows      []unknownTopRow
 		TopSort      string
 		KeyHeader    string
+		CSRFToken    string
 	}{
 		Title:        cfg.title,
 		BasePath:     cfg.basePath,
@@ -515,6 +553,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request, cfg abuseCo
 		TopRows:      s.topUnknown(cfg.counterPrefix, topSort),
 		TopSort:      topSort,
 		KeyHeader:    cfg.keyHeader,
+		CSRFToken:    s.csrfToken,
 	}
 	s.render(w, cfg.template, pageData)
 }
@@ -527,6 +566,7 @@ type confirmData struct {
 	Action       string
 	BackTo       string
 	ConfirmLabel string
+	CSRFToken    string
 }
 
 type deleteFn func(ctx context.Context, ids []string) (int64, error)
@@ -560,6 +600,9 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, label, red
 		http.Error(w, "bad form: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !s.checkCSRF(w, r) {
+		return
+	}
 	keys := r.PostForm["keys"]
 	if len(keys) == 0 {
 		http.Redirect(w, r, redirectTo, http.StatusSeeOther)
@@ -582,6 +625,13 @@ func (s *Server) handlePurge(w http.ResponseWriter, r *http.Request, label, redi
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !s.checkCSRF(w, r) {
+		return
+	}
 	// Two-step confirmation: first POST renders a page, second POST with
 	// confirm=yes actually flushes. Avoids accidental clicks without JS.
 	if r.PostFormValue("confirm") != "yes" {
@@ -591,6 +641,7 @@ func (s *Server) handlePurge(w http.ResponseWriter, r *http.Request, label, redi
 			Action:       action,
 			BackTo:       redirectTo,
 			ConfirmLabel: "Yes, purge " + label,
+			CSRFToken:    s.csrfToken,
 		})
 		return
 	}

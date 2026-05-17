@@ -566,6 +566,17 @@ api_key.
 логируются на info-уровне (`admin delete` / `admin purge` с лейблом БД и
 числом обработанных записей) — для аудита через journald.
 
+### CSRF-защита
+
+Каждый рендер страницы с формой включает скрытое поле
+`<input type="hidden" name="csrf_token" value="...">`. Токен — 32 байта
+из `crypto/rand`, формируется один раз на старте процесса и живёт до
+рестарта. Все state-changing POST-ы (`*/delete`, `*/purge`) валидируют
+поле через `subtle.ConstantTimeCompare` — несовпадение даёт `403`
+и warn-лог с путём и `RemoteAddr`. Защищает от cross-origin POST-ов из
+браузера легитимного админа на сторонний сайт: атакующий не может
+прочитать тело страницы под cross-origin и не узнаёт токен.
+
 ### Стек шаблонов и JS
 
 Интерфейс: чистый HTML, `html/template` из stdlib, минимальный inline CSS.

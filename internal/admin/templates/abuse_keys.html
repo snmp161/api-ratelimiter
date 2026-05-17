@@ -8,6 +8,7 @@
 {{template "actions" .}}
 
 <form id="action-form" method="post">
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 <table>
   <tr>
     <th class="cb"></th>

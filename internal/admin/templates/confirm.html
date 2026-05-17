@@ -3,6 +3,7 @@
 <div class="warn-banner">{{.Message}}</div>
 <form method="post" action="{{.Action}}">
   <input type="hidden" name="confirm" value="yes">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
   <button type="submit" class="btn-danger">{{.ConfirmLabel}}</button>
   <a href="{{.BackTo}}" class="btn-cancel">Cancel</a>
 </form>
