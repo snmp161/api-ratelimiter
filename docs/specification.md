@@ -938,6 +938,29 @@ ratelimiter/
 - Непустой `X-Api-Key` → используется как ключ
 - Пустой `X-Api-Key` → rate limit по `X-Real-IP`
 - Отсутствующий `X-Real-IP` при пустом ключе → запрос пропускается (fail open without key — лимитировать нечем)
+- Валидация `X-Real-IP`: только IPv4/IPv6, остальное игнорируется
+
+**Redis-операции (`store/redis_test.go`):**
+- `LookupLimit` / `LimitExists` — найден / не найден / ошибка парсинга
+- `UpsertAbuseKey` / `UpsertAbuseIP` — поля и TTL записаны корректно
+- `ScanLimits` / `ScanAbuseKeys` / `ScanAbuseIPs` — обход через `SCAN`
+- `DeleteLimits` / `DeleteAbuseKeys` / `DeleteAbuseIPs` — удаление с правильным префиксом, idempotent для отсутствующих ключей
+- `PurgeLimits` / `PurgeAbuseKeys` / `PurgeAbuseIPs` — `FLUSHDB` соответствующей БД
+- `DBSize` — корректный счётчик по трём БД
+- `Ping` — успех при живом Redis, ошибка при недоступности
+
+Используется `github.com/alicebob/miniredis/v2` — pure-Go in-process Redis, без Docker.
+
+**Веб-админка (`admin/admin_test.go`):**
+- `/`, `/limits`, `/abuse/keys`, `/abuse/ips` рендерятся в 200 с ожидаемым содержимым
+- `/` рендерится и при недоступном Redis (баннер «redis err», но 200)
+- CSRF: невалидный/отсутствующий токен на `*/delete` и `*/purge` → 403
+- CSRF: валидный токен → действие выполняется
+- `/limits/delete`: GET → 405, пустой выбор → 303 без операций
+- `/limits/purge`: первый POST с валидным токеном → страница подтверждения с прокинутым токеном; второй POST с `confirm=yes` → `FLUSHDB`
+- Top-25 счётчиков отрисовываются из in-memory (`KnownMap` / `UnknownMap`)
+- Фильтрация `key:` / `ip:` префиксов в top-таблицах
+- Несуществующий путь → 404
 
 ### Запуск тестов
 
