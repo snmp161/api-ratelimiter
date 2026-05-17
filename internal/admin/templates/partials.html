@@ -56,9 +56,10 @@
 
 {{define "search"}}
 <form class="search" method="get">
-  <input type="text" name="q" value="{{.Q}}" placeholder="search…">
+  <input type="text" name="q" value="{{.Q}}" placeholder="search…" title="substring match, case-sensitive">
   <button type="submit">search</button>
   {{if .Q}}<a href="?" class="muted small">clear</a>{{end}}
+  <span class="small muted">case-sensitive substring</span>
 </form>{{end}}
 
 {{/* "actions" combines search + Delete (selected) + Purge (whole DB) on
