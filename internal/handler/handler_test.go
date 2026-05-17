@@ -142,6 +142,35 @@ func TestCheck_KeyPriorityQueryOverOriginalURI(t *testing.T) {
 	}
 }
 
+func TestCheck_IPValidation(t *testing.T) {
+	cases := []struct {
+		header string
+		want   string
+	}{
+		{"1.2.3.4", "1.2.3.4"},
+		{"  1.2.3.4  ", "1.2.3.4"},   // whitespace trimmed
+		{"::1", "::1"},                // IPv6 loopback
+		{"2001:db8::1", "2001:db8::1"},
+		{"", ""},
+		{"not-an-ip", ""},             // garbage rejected
+		{"../etc/passwd", ""},         // path-traversal style rejected
+		{"1.2.3.4, 5.6.7.8", ""},      // X-Forwarded-For style not accepted
+		{"999.999.999.999", ""},       // out-of-range IPv4 rejected
+	}
+	for _, tc := range cases {
+		d := &spyDecider{allow: true}
+		h := newTestCheck(d)
+		r := httptest.NewRequest("GET", "/check", nil)
+		r.Header.Set("X-Api-Key", "k") // non-empty so handler uses extractIP path too
+		r.Header.Set("X-Real-IP", tc.header)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if d.gotIP != tc.want {
+			t.Errorf("X-Real-IP=%q: got ip=%q want %q", tc.header, d.gotIP, tc.want)
+		}
+	}
+}
+
 func TestCheck_NoHeadersFailOpenWithoutKey(t *testing.T) {
 	d := &spyDecider{allow: true}
 	h := newTestCheck(d)

@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"ratelimiter/internal/metrics"
@@ -36,7 +38,7 @@ func (c *Check) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	apiKey := extractKey(r)
-	ip := r.Header.Get("X-Real-IP")
+	ip := extractIP(r)
 
 	allowed := c.limiter.Decide(r.Context(), apiKey, ip)
 
@@ -81,6 +83,24 @@ func (c *Check) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //     option because $request_uri *is* preserved in the auth_request
 //     subrequest (other built-in vars like $args/$arg_* aren't).
 //
+// extractIP returns X-Real-IP only if it parses as a valid IPv4 or IPv6
+// address. Garbage / spoofed headers fall back to empty so they never end
+// up as a counter-map key (and so per-IP limits can't be bypassed by
+// sending X-Real-IP: nonsense). Defense in depth: in the documented Angie
+// config $remote_addr overrides whatever the client supplied, but a
+// misconfig that forwards the raw header would otherwise be silently
+// abused.
+func extractIP(r *http.Request) string {
+	v := strings.TrimSpace(r.Header.Get("X-Real-IP"))
+	if v == "" {
+		return ""
+	}
+	if net.ParseIP(v) == nil {
+		return ""
+	}
+	return v
+}
+
 // All three are tried so that any of these nginx/Angie config styles works.
 func extractKey(r *http.Request) string {
 	if v := r.Header.Get("X-Api-Key"); v != "" {
