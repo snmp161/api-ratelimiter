@@ -130,8 +130,7 @@ func (m *UnknownMap) DeleteIfInactive(key string, now time.Time) bool {
 	if !ok {
 		return false
 	}
-	currentSlot := now.Unix() / m.windowS
-	if currentSlot != c.Slot && now.Sub(c.LastRequest) >= time.Duration(m.windowS)*time.Second {
+	if isInactive(c.Slot, c.LastRequest, now, m.windowS) {
 		delete(m.counters, key)
 		return true
 	}
@@ -155,15 +154,32 @@ func (m *UnknownMap) SizeBytes() int64 {
 	return total
 }
 
-// IsInactive reports whether the counter has not been touched in the current slot.
+// IsInactive reports whether the counter has not been touched for at least
+// two full windows. The doubled threshold smooths over short pauses
+// (trickle traffic, e.g. one request every window/2 seconds) so the counter
+// doesn't keep getting recreated each cleanup cycle. Memory cost: counters
+// linger up to 2×window after the last request.
 func (m *UnknownMap) IsInactive(c UnknownCounter, now time.Time) bool {
-	currentSlot := now.Unix() / m.windowS
-	return currentSlot != c.Slot && now.Sub(c.LastRequest) >= time.Duration(m.windowS)*time.Second
+	return isInactive(c.Slot, c.LastRequest, now, m.windowS)
 }
 
-// IsInactiveKnown is the same predicate for KnownCounter (kept here so both
-// share the windowS configuration without callers needing to know about it).
+// IsInactive — same predicate for KnownCounter (kept here so both share the
+// windowS configuration without callers needing to know about it).
 func (m *KnownMap) IsInactive(c KnownCounter, now time.Time) bool {
-	currentSlot := now.Unix() / m.windowS
-	return currentSlot != c.Slot && now.Sub(c.LastRequest) >= time.Duration(m.windowS)*time.Second
+	return isInactive(c.Slot, c.LastRequest, now, m.windowS)
+}
+
+// isInactive — shared predicate. A counter is "inactive" when:
+//   - the current slot differs from the counter's last slot (i.e. nothing
+//     in the current window), AND
+//   - the last request is at least two full windows in the past.
+//
+// The two-window gap is intentional (see IsInactive doc): smooths over
+// pauses shorter than 2×window so the counter survives short idle gaps.
+func isInactive(slot int64, lastRequest, now time.Time, windowS int64) bool {
+	currentSlot := now.Unix() / windowS
+	if currentSlot == slot {
+		return false
+	}
+	return now.Sub(lastRequest) >= 2*time.Duration(windowS)*time.Second
 }

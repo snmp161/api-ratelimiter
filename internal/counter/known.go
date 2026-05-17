@@ -135,8 +135,7 @@ func (m *KnownMap) DeleteIfInactive(key string, now time.Time) bool {
 	if !ok {
 		return false
 	}
-	currentSlot := now.Unix() / m.windowS
-	if currentSlot != c.Slot && now.Sub(c.LastRequest) >= time.Duration(m.windowS)*time.Second {
+	if isInactive(c.Slot, c.LastRequest, now, m.windowS) {
 		delete(m.counters, key)
 		return true
 	}

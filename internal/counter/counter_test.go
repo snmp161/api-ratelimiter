@@ -219,13 +219,38 @@ func TestUnknown_NamespaceKeysDoNotCollide(t *testing.T) {
 
 func TestKnown_IsInactive(t *testing.T) {
 	c := &clock{t: time.Unix(100, 0)}
-	m := NewKnownMap(1, c.now)
+	m := NewKnownMap(1, c.now) // window = 1s, inactivity threshold = 2*window = 2s
+
 	m.RecordRequest("k", 10, 0)
 	got, _ := m.Get("k")
+
 	if m.IsInactive(got, time.Unix(100, 0)) {
 		t.Fatal("counter should be active in current slot")
 	}
+	// 1s later: slot changed but only 1s ≤ 2*window — still active (the
+	// 2×window gap smooths over short idle pauses).
+	if m.IsInactive(got, time.Unix(101, 0)) {
+		t.Fatal("1s after last request: should still be active (< 2*window)")
+	}
+	// 2s later: hit the 2*window boundary — inactive.
 	if !m.IsInactive(got, time.Unix(102, 0)) {
-		t.Fatal("counter should be inactive 2s later")
+		t.Fatal("2s after last request: should be inactive (>= 2*window)")
+	}
+}
+
+func TestUnknown_IsInactive_TwoWindowGap(t *testing.T) {
+	c := &clock{t: time.Unix(100, 0)}
+	m := NewUnknownMap(60, c.now) // window = 60s, threshold = 120s
+
+	m.RecordRequest("ip:1.1.1.1", 10, 0, 10)
+	got, _ := m.Get("ip:1.1.1.1")
+
+	// 90s later: slot changed (100/60=1 vs 190/60=3) but only 90s — still active.
+	if m.IsInactive(got, time.Unix(190, 0)) {
+		t.Fatal("90s after last request (< 2*window=120s): should still be active")
+	}
+	// 121s later: past 2*window — inactive.
+	if !m.IsInactive(got, time.Unix(221, 0)) {
+		t.Fatal("121s after last request: should be inactive")
 	}
 }
