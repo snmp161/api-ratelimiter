@@ -7,8 +7,9 @@ import (
 type Metrics struct {
 	Registry *prometheus.Registry
 
+	// Total blocked = RequestsBlockedIndividual + RequestsBlockedGlobal —
+	// no separate "blocked" label, sum the two subtotals in PromQL.
 	RequestsAllowed           prometheus.Counter
-	RequestsBlocked           prometheus.Counter
 	RequestsBlockedIndividual prometheus.Counter
 	RequestsBlockedGlobal     prometheus.Counter
 
@@ -40,7 +41,6 @@ func New() *Metrics {
 	m := &Metrics{
 		Registry:                  reg,
 		RequestsAllowed:           requestsTotal.WithLabelValues("allowed"),
-		RequestsBlocked:           requestsTotal.WithLabelValues("blocked"),
 		RequestsBlockedIndividual: requestsTotal.WithLabelValues("blocked_individual"),
 		RequestsBlockedGlobal:     requestsTotal.WithLabelValues("blocked_global"),
 

@@ -137,7 +137,8 @@ All metrics live in the Prometheus registry, exposed both on `/metrics`
 and through the web admin.
 
 ```
-ratelimit_requests_total{result="allowed|blocked|blocked_individual|blocked_global"}
+ratelimit_requests_total{result="allowed|blocked_individual|blocked_global"}
+# total blocked = sum(rate(ratelimit_requests_total{result=~"blocked_.*"}[5m]))
 ratelimit_counters_known_active
 ratelimit_counters_unknown_active
 ratelimit_memory_bytes

@@ -139,7 +139,8 @@ HSET rate:limit:abc123 created_at 1717000000 limit 500
 веб-админку.
 
 ```
-ratelimit_requests_total{result="allowed|blocked|blocked_individual|blocked_global"}
+ratelimit_requests_total{result="allowed|blocked_individual|blocked_global"}
+# всего блокировок = sum(rate(ratelimit_requests_total{result=~"blocked_.*"}[5m]))
 ratelimit_counters_known_active
 ratelimit_counters_unknown_active
 ratelimit_memory_bytes

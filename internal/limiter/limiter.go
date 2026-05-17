@@ -81,7 +81,6 @@ func (l *Limiter) decideWithKey(ctx context.Context, apiKey string) bool {
 			l.metrics.RequestsAllowed.Inc()
 			return true
 		}
-		l.metrics.RequestsBlocked.Inc()
 		l.metrics.RequestsBlockedIndividual.Inc()
 		return false
 	}
@@ -92,7 +91,6 @@ func (l *Limiter) decideWithKey(ctx context.Context, apiKey string) bool {
 		l.metrics.RequestsAllowed.Inc()
 		return true
 	}
-	l.metrics.RequestsBlocked.Inc()
 	l.metrics.RequestsBlockedGlobal.Inc()
 	return false
 }
@@ -104,7 +102,6 @@ func (l *Limiter) decideWithIP(ip string) bool {
 		l.metrics.RequestsAllowed.Inc()
 		return true
 	}
-	l.metrics.RequestsBlocked.Inc()
 	l.metrics.RequestsBlockedGlobal.Inc()
 	return false
 }

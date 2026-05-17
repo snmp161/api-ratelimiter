@@ -421,10 +421,13 @@ Prometheus registry (в памяти процесса)
 **Счётчики запросов** (Counter — монотонно растут с момента старта):
 ```
 ratelimit_requests_total{result="allowed"}
-ratelimit_requests_total{result="blocked"}
 ratelimit_requests_total{result="blocked_individual"}  # по лимиту из redisDB1
 ratelimit_requests_total{result="blocked_global"}      # по глобальному лимиту
 ```
+
+Общее число блокировок = `blocked_individual + blocked_global`. Отдельной
+метки `blocked` нет — суммируйте подметки в PromQL:
+`sum(rate(ratelimit_requests_total{result=~"blocked_.*"}[5m]))`.
 
 **Состояние памяти** (Gauge — текущее значение):
 ```
@@ -474,7 +477,6 @@ ratelimit_check_duration_seconds
 | Метрика | Тип | Описание |
 |---------|-----|----------|
 | `requests_total{allowed}` | Counter | Пропущено с момента старта |
-| `requests_total{blocked}` | Counter | Заблокировано с момента старта |
 | `requests_total{blocked_individual}` | Counter | По индивидуальному лимиту |
 | `requests_total{blocked_global}` | Counter | По глобальному лимиту |
 | `counters_known_active` | Gauge | Счётчиков в KnownCounters сейчас |
