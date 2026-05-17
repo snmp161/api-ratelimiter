@@ -87,6 +87,24 @@ func newSetup(t *testing.T) (*counter.KnownMap, *counter.UnknownMap, *fakeStore,
 	return known, unknown, fs, cl, c
 }
 
+// seedAbusiveUnknown drives the given unknown-map key past the AbuseHits
+// transfer threshold (>= 3) by triggering 4 slot transitions where each
+// previous slot exceeded global_limit * abuse_multiplier (10 * 10 = 100).
+// Leaves the clock at slot 1004 with one in-slot request, so the counter
+// is "active" — callers wanting an inactive variant advance c.t after.
+func seedAbusiveUnknown(t *testing.T, m *counter.UnknownMap, c *clk, key string) {
+	t.Helper()
+	const globalLimit, burst, abuseMul = 10, 0, 10
+	for slot := 0; slot < 4; slot++ {
+		c.t = time.Unix(int64(1000+slot), 0)
+		for i := 0; i < 105; i++ {
+			m.RecordRequest(key, globalLimit, burst, abuseMul)
+		}
+	}
+	c.t = time.Unix(1004, 0)
+	m.RecordRequest(key, globalLimit, burst, abuseMul)
+}
+
 func TestCleanup_KnownInactiveDeleted(t *testing.T) {
 	known, _, fs, cl, c := newSetup(t)
 	fs.exists["k1"] = true
@@ -133,16 +151,7 @@ func TestCleanup_UnknownInactiveBelowThresholdDeleted(t *testing.T) {
 
 func TestCleanup_UnknownInactiveAboveThresholdTransferredAndDeleted(t *testing.T) {
 	_, unknown, fs, cl, c := newSetup(t)
-	// drive AbuseHits above threshold by triggering 4 slot changes after going over
-	for slot := 0; slot < 4; slot++ {
-		c.t = time.Unix(int64(1000+slot), 0)
-		for i := 0; i < 105; i++ {
-			unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
-		}
-	}
-	// trigger one more slot to bake the last AbuseHit
-	c.t = time.Unix(1004, 0)
-	unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
+	seedAbusiveUnknown(t, unknown, c, "ip:1.1.1.1")
 
 	got, _ := unknown.Get("ip:1.1.1.1")
 	if got.AbuseHits < 3 {
@@ -165,14 +174,7 @@ func TestCleanup_UnknownInactiveAboveThresholdTransferredAndDeleted(t *testing.T
 
 func TestCleanup_UnknownActiveAboveThresholdTransferredKept(t *testing.T) {
 	_, unknown, fs, cl, c := newSetup(t)
-	for slot := 0; slot < 4; slot++ {
-		c.t = time.Unix(int64(1000+slot), 0)
-		for i := 0; i < 105; i++ {
-			unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
-		}
-	}
-	c.t = time.Unix(1004, 0)
-	unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10) // makes counter active in current slot
+	seedAbusiveUnknown(t, unknown, c, "ip:1.1.1.1")
 	// Don't bump c.t — counter is still active.
 	cl.Run(context.Background())
 
@@ -186,15 +188,7 @@ func TestCleanup_UnknownActiveAboveThresholdTransferredKept(t *testing.T) {
 
 func TestCleanup_UpsertPayloadMatchesCounter(t *testing.T) {
 	_, unknown, fs, cl, c := newSetup(t)
-	// build a single ip:1.1.1.1 counter past threshold
-	for slot := 0; slot < 4; slot++ {
-		c.t = time.Unix(int64(1000+slot), 0)
-		for i := 0; i < 105; i++ {
-			unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
-		}
-	}
-	c.t = time.Unix(1004, 0)
-	unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
+	seedAbusiveUnknown(t, unknown, c, "ip:1.1.1.1")
 	got, _ := unknown.Get("ip:1.1.1.1")
 
 	c.t = time.Unix(1100, 0)
@@ -224,16 +218,7 @@ func TestCleanup_UpsertPayloadMatchesCounter(t *testing.T) {
 func TestCleanup_SkipsTransferWhenRedisUnhealthy(t *testing.T) {
 	_, unknown, fs, cl, c := newSetup(t)
 	fs.unhealthy = true
-
-	// Build a counter past the AbuseHits threshold.
-	for slot := 0; slot < 4; slot++ {
-		c.t = time.Unix(int64(1000+slot), 0)
-		for i := 0; i < 105; i++ {
-			unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
-		}
-	}
-	c.t = time.Unix(1004, 0)
-	unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
+	seedAbusiveUnknown(t, unknown, c, "ip:1.1.1.1")
 
 	c.t = time.Unix(1100, 0) // active counter, would normally be deleted
 	cl.Run(context.Background())
@@ -263,14 +248,7 @@ func TestCleanup_KnownNeverTransferred(t *testing.T) {
 
 func TestCleanup_TransferKeyPrefix(t *testing.T) {
 	_, unknown, fs, cl, c := newSetup(t)
-	for slot := 0; slot < 4; slot++ {
-		c.t = time.Unix(int64(1000+slot), 0)
-		for i := 0; i < 105; i++ {
-			unknown.RecordRequest("key:abc", 10, 0, 10)
-		}
-	}
-	c.t = time.Unix(1004, 0)
-	unknown.RecordRequest("key:abc", 10, 0, 10)
+	seedAbusiveUnknown(t, unknown, c, "key:abc")
 	c.t = time.Unix(1100, 0)
 	cl.Run(context.Background())
 
