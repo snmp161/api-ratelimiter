@@ -212,8 +212,19 @@ func run() error {
 		logger.Warn("check server shutdown", "err", err)
 	}
 	// stop admin and metrics in parallel — they're not on the hot path.
-	go func() { _ = adminHTTP.Shutdown(shutdownCtx) }()
-	go func() { _ = metricsSrv.Shutdown(shutdownCtx) }()
+	// Log shutdown errors so a stuck-on-shutdown server is visible in
+	// journald instead of getting silently SIGKILL'd by systemd after
+	// TimeoutStopSec.
+	go func() {
+		if err := adminHTTP.Shutdown(shutdownCtx); err != nil {
+			logger.Warn("admin server shutdown", "err", err)
+		}
+	}()
+	go func() {
+		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Warn("metrics server shutdown", "err", err)
+		}
+	}()
 
 	// 2. final cleanup — flush abusive counters into Redis.
 	logger.Info("running final cleanup")
