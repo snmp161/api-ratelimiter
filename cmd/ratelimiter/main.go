@@ -114,14 +114,28 @@ func run() error {
 
 	// admin server. /healthz and /readyz are exposed alongside the admin
 	// pages so orchestrators / monitors can probe on the same port.
+	//
+	// /healthz — liveness — always 200 while the process is running. The
+	//   service is fail-open: even with Redis down it answers /check, so
+	//   "alive" stays true as long as the goroutine can respond.
+	// /readyz — readiness — 503 during shutdown OR when Redis is
+	//   unreachable. Even though /check still works without Redis (fall
+	//   back to global limit), "ready" means "full functionality" — an
+	//   orchestrator can drain this instance and route to a healthy one.
 	var shuttingDown atomic.Bool
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	adminMux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+	adminMux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if shuttingDown.Load() {
-			w.WriteHeader(http.StatusServiceUnavailable)
+			http.Error(w, "shutting down", http.StatusServiceUnavailable)
+			return
+		}
+		pingCtx, pingCancel := context.WithTimeout(r.Context(), 200*time.Millisecond)
+		defer pingCancel()
+		if err := rdb.Ping(pingCtx); err != nil {
+			http.Error(w, "redis unreachable: "+err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
