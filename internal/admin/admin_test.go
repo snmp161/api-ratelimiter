@@ -22,7 +22,7 @@ import (
 func newTestServer(t *testing.T) (*Server, *miniredis.Miniredis, *counter.KnownMap, *counter.UnknownMap) {
 	t.Helper()
 	mr := miniredis.RunT(t)
-	s := store.New(mr.Addr(), "")
+	s := store.New(mr.Addr(), "", nil)
 	t.Cleanup(s.Close)
 	cfg := config.Default()
 	known := counter.NewKnownMap(1, nil)

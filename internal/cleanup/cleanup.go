@@ -19,6 +19,7 @@ type Store interface {
 	UpsertAbuseKey(ctx context.Context, apiKey string, r store.AbuseRecord, ttl time.Duration) error
 	UpsertAbuseIP(ctx context.Context, ip string, r store.AbuseRecord, ttl time.Duration) error
 	DBSize(ctx context.Context) (int64, int64, int64, error)
+	IsHealthy() bool
 }
 
 type Cleanup struct {
@@ -114,10 +115,15 @@ func (c *Cleanup) runKnown(ctx context.Context, now time.Time) (deleted, transfe
 }
 
 func (c *Cleanup) runUnknown(ctx context.Context, now time.Time) (deleted, transferred int) {
+	// If Redis is known-down, don't burn time/log lines on doomed upserts.
+	// Counters stay in memory until the next cleanup; AbuseHits keep
+	// growing in the meantime. Inactive counters are still GC'd to bound
+	// memory.
+	redisUp := c.store.IsHealthy()
 	for _, snap := range c.unknown.Snapshot() {
 		// AbuseHits is monotonic — if the snapshot says transfer, the
 		// live counter still says transfer.
-		shouldTransfer := snap.AbuseHits >= c.transferThreshold
+		shouldTransfer := snap.AbuseHits >= c.transferThreshold && redisUp
 
 		if shouldTransfer {
 			// Re-read the counter under the lock so the transferred

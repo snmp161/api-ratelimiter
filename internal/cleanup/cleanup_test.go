@@ -14,14 +14,15 @@ import (
 )
 
 type fakeStore struct {
-	mu       sync.Mutex
-	exists   map[string]bool
-	abuseK   map[string]store.AbuseRecord
-	abuseIP  map[string]store.AbuseRecord
-	keyTTL   map[string]time.Duration
-	ipTTL    map[string]time.Duration
-	dbErr    error
-	upsertEr error
+	mu        sync.Mutex
+	exists    map[string]bool
+	abuseK    map[string]store.AbuseRecord
+	abuseIP   map[string]store.AbuseRecord
+	keyTTL    map[string]time.Duration
+	ipTTL     map[string]time.Duration
+	dbErr     error
+	upsertEr  error
+	unhealthy bool
 }
 
 func newFakeStore() *fakeStore {
@@ -33,6 +34,8 @@ func newFakeStore() *fakeStore {
 		ipTTL:   map[string]time.Duration{},
 	}
 }
+
+func (f *fakeStore) IsHealthy() bool { return !f.unhealthy }
 
 func (f *fakeStore) LimitExists(_ context.Context, k string) (bool, error) {
 	f.mu.Lock()
@@ -215,6 +218,34 @@ func TestCleanup_UpsertPayloadMatchesCounter(t *testing.T) {
 	}
 	if r.AbuseHits != got.AbuseHits {
 		t.Errorf("abuse mismatch")
+	}
+}
+
+func TestCleanup_SkipsTransferWhenRedisUnhealthy(t *testing.T) {
+	_, unknown, fs, cl, c := newSetup(t)
+	fs.unhealthy = true
+
+	// Build a counter past the AbuseHits threshold.
+	for slot := 0; slot < 4; slot++ {
+		c.t = time.Unix(int64(1000+slot), 0)
+		for i := 0; i < 105; i++ {
+			unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
+		}
+	}
+	c.t = time.Unix(1004, 0)
+	unknown.RecordRequest("ip:1.1.1.1", 10, 0, 10)
+
+	c.t = time.Unix(1100, 0) // active counter, would normally be deleted
+	cl.Run(context.Background())
+
+	if len(fs.abuseIP) != 0 {
+		t.Fatal("must not upsert to redis when unhealthy")
+	}
+	// Counter is inactive at this point but redis is down, so we still
+	// drop it from memory (the bookkeeping path stays the same; only the
+	// network write is skipped).
+	if unknown.Len() != 0 {
+		t.Fatalf("inactive counter should still be GC'd, got %d", unknown.Len())
 	}
 }
 

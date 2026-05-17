@@ -11,7 +11,7 @@ import (
 func newTestStore(t *testing.T) (*Store, *miniredis.Miniredis) {
 	t.Helper()
 	mr := miniredis.RunT(t)
-	s := New(mr.Addr(), "")
+	s := New(mr.Addr(), "", nil) // nil logger → discard handler inside New
 	t.Cleanup(s.Close)
 	return s, mr
 }
@@ -286,5 +286,54 @@ func TestPing(t *testing.T) {
 	mr.Close()
 	if err := s.Ping(context.Background()); err == nil {
 		t.Fatal("ping must fail when redis is dead")
+	}
+}
+
+func TestIsHealthy_StartsTrue(t *testing.T) {
+	s, _ := newTestStore(t)
+	if !s.IsHealthy() {
+		t.Fatal("store should start healthy")
+	}
+}
+
+func TestIsHealthy_FlipsOnRedisFailure(t *testing.T) {
+	s, mr := newTestStore(t)
+	mr.Close()
+	_ = s.Ping(context.Background())
+	if s.IsHealthy() {
+		t.Fatal("expected unhealthy after Ping failed")
+	}
+}
+
+func TestIsHealthy_RecoversAfterSuccess(t *testing.T) {
+	// One miniredis we tear down, one we point Store at via a fresh start.
+	// Easiest: use one miniredis, close it, start a new Store... but Store
+	// caches connections to the dead address. Instead, simulate recovery
+	// by observing a manual success: observe() is package-private, so we
+	// emulate with a known-good Ping after restarting miniredis on the
+	// same address. miniredis doesn't reuse the port, so we craft this
+	// test by toggling the internal field directly via a fresh observe.
+	s, mr := newTestStore(t)
+	mr.Close()
+	_ = s.Ping(context.Background())
+	if s.IsHealthy() {
+		t.Fatal("setup: should be unhealthy")
+	}
+	s.observe("test", nil) // simulate a successful op
+	if !s.IsHealthy() {
+		t.Fatal("should be healthy after successful observe")
+	}
+}
+
+func TestObserve_RedisNilIsHealthy(t *testing.T) {
+	s, _ := newTestStore(t)
+	// LookupLimit for a missing key returns redis.Nil internally, which
+	// observe() must treat as healthy.
+	_, found, err := s.LookupLimit(context.Background(), "missing")
+	if err != nil || found {
+		t.Fatalf("unexpected: err=%v found=%v", err, found)
+	}
+	if !s.IsHealthy() {
+		t.Fatal("redis.Nil (key missing) must not flip healthy state")
 	}
 }

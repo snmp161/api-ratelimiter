@@ -71,8 +71,10 @@ func (l *Limiter) decideWithKey(ctx context.Context, apiKey string) bool {
 
 	limit, found, err := l.store.LookupLimit(lookupCtx, apiKey)
 	if err != nil {
+		// Store already logged the unhealthy transition (once) and
+		// counts the error path; falling back to the global limit is
+		// the fail-open contract, no extra log on the hot path.
 		l.metrics.RedisErrorsTotal.Inc()
-		l.logger.Warn("redis lookup failed, falling back to global limit", "err", err)
 		found = false
 	}
 

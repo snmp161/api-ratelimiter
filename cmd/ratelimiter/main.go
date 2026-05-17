@@ -67,7 +67,7 @@ func run() error {
 		"abuse_transfer_threshold", cfg.AbuseTransferThreshold,
 	)
 
-	rdb := store.New(cfg.RedisAddr, cfg.RedisPassword)
+	rdb := store.New(cfg.RedisAddr, cfg.RedisPassword, logger)
 	defer rdb.Close()
 
 	known := counter.NewKnownMap(cfg.WindowSeconds(), nil)
