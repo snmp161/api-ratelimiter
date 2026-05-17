@@ -4,16 +4,17 @@
 
 Rate limiting service for an API server. Runs as a helper HTTP service
 that Angie calls via `auth_request`. Does not parse the protocol, does
-not build business responses — replies `200 OK` or `429 Too Many Requests`
-with an empty body. Response customisation is done on the Angie side via
-`error_page`.
+not build business responses — replies `200 OK` or `403 Forbidden` with
+an empty body (403, not 429, because Angie's `auth_request` only forwards
+2xx / 401 / 403 to the parent — anything else becomes 500). Response
+customisation is done on the Angie side via `error_page`.
 
 Full specification — [`docs/specification.md`](docs/specification.md) (Russian).
 
 ## What's inside
 
 - HTTP endpoint `GET /check` — the only entry point Angie calls. Reads
-  `X-Api-Key` and `X-Real-IP`, returns 200 / 429.
+  `X-Api-Key` and `X-Real-IP`, returns 200 / 403.
 - in-memory counters with a fixed-window algorithm and burst support.
 - Redis (3 DBs): per-api-key limits, abusive api-keys, abusive IPs.
 - Web admin (read-only) and Prometheus `/metrics` — both read from a
@@ -26,7 +27,7 @@ Full specification — [`docs/specification.md`](docs/specification.md) (Russian
 Client ─► Angie ─auth_request─► ratelimiter ─► Redis (DB1/2/3)
                   │
                   ├─[200]─► PHP upstream
-                  └─[429]─► error_page → 200 with custom body
+                  └─[403]─► error_page → 200 with custom body
 ```
 
 See section 2 of `docs/specification.md` for details.
