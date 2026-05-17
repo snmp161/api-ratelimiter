@@ -28,7 +28,7 @@ func (c *Check) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	defer func() {
 		c.metrics.CheckDurationSeconds.Observe(time.Since(start).Seconds())
-		// Fail open: any panic returns 200 to keep Angie happy.
+		// Fail open: any panic returns 200 to keep nginx/Angie happy.
 		if rec := recover(); rec != nil {
 			c.logger.Error("panic in /check, fail open", "recover", rec)
 			w.WriteHeader(http.StatusOK)
@@ -42,7 +42,7 @@ func (c *Check) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// debug log per request — what was received and what was decided.
 	// Off by default at info; flip --log-level debug to enable. Includes
-	// raw query and full headers so we can see what Angie actually sent
+	// raw query and full headers so we can see what nginx/Angie actually sent
 	// (useful when debugging $arg_*/$request_uri behaviour in the
 	// auth_request subrequest).
 	c.logger.Debug("/check",
@@ -58,30 +58,30 @@ func (c *Check) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// 403 (not 429) on block — required by Angie/nginx auth_request,
+	// 403 (not 429) on block — required by nginx/Angie auth_request,
 	// which only forwards 2xx / 401 / 403 to the parent request and
 	// converts everything else to 500 with "auth request unexpected
 	// status" in the error log. The custom-body rewrite to client is
-	// done by `error_page 403 = @ratelimit_*` in Angie.
+	// done by `error_page 403 = @ratelimit_*` in nginx/Angie.
 	w.WriteHeader(http.StatusForbidden)
 }
 
 // extractKey resolves the api_key (or token) from the incoming request,
 // trying three sources in priority order:
 //
-//  1. X-Api-Key header — set by Angie via `proxy_set_header X-Api-Key`,
-//     historical default. Requires Angie to extract the value through a
+//  1. X-Api-Key header — set by nginx/Angie via `proxy_set_header X-Api-Key`,
+//     historical default. Requires nginx/Angie to extract the value through a
 //     working map / set, which is non-trivial with auth_request because
 //     $arg_* in the subrequest is empty (nginx#761).
 //  2. Query parameter ?api_key= or ?token= on /check itself — set by
 //     `proxy_pass http://ratelimiter/check?api_key=$client_key`.
-//  3. X-Original-URI header — set by Angie via
+//  3. X-Original-URI header — set by nginx/Angie via
 //     `proxy_set_header X-Original-URI $request_uri`. We parse it
 //     server-side and pull api_key/token out. This is the most robust
 //     option because $request_uri *is* preserved in the auth_request
 //     subrequest (other built-in vars like $args/$arg_* aren't).
 //
-// All three are tried so that any of these Angie config styles works.
+// All three are tried so that any of these nginx/Angie config styles works.
 func extractKey(r *http.Request) string {
 	if v := r.Header.Get("X-Api-Key"); v != "" {
 		return v

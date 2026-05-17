@@ -3,17 +3,17 @@
 *Languages: **English** · [Русский](README.ru.md)*
 
 Rate limiting service for an API server. Runs as a helper HTTP service
-that Angie calls via `auth_request`. Does not parse the protocol, does
-not build business responses — replies `200 OK` or `403 Forbidden` with
-an empty body (403, not 429, because Angie's `auth_request` only forwards
-2xx / 401 / 403 to the parent — anything else becomes 500). Response
-customisation is done on the Angie side via `error_page`.
+that nginx/Angie calls via `auth_request`. Does not parse the protocol,
+does not build business responses — replies `200 OK` or `403 Forbidden`
+with an empty body (403, not 429, because nginx/Angie's `auth_request`
+only forwards 2xx / 401 / 403 to the parent — anything else becomes 500).
+Response customisation is done on the nginx/Angie side via `error_page`.
 
 Full specification — [`docs/specification.md`](docs/specification.md) (Russian).
 
 ## What's inside
 
-- HTTP endpoint `GET /check` — the only entry point Angie calls. Reads
+- HTTP endpoint `GET /check` — the only entry point nginx/Angie calls. Reads
   `X-Api-Key` and `X-Real-IP`, returns 200 / 403.
 - in-memory counters with a fixed-window algorithm and burst support.
 - Redis (3 DBs): per-api-key limits, abusive api-keys, abusive IPs.
@@ -24,7 +24,7 @@ Full specification — [`docs/specification.md`](docs/specification.md) (Russian
 ## Architecture
 
 ```
-Client ─► Angie ─auth_request─► ratelimiter ─► Redis (DB1/2/3)
+Client ─► nginx/Angie ─auth_request─► ratelimiter ─► Redis (DB1/2/3)
                   │
                   ├─[200]─► PHP upstream
                   └─[403]─► error_page → 200 with custom body
@@ -51,7 +51,7 @@ make run
 
 Brings the service up on:
 
-- `unix:/tmp/ratelimit.sock` — `/check` for Angie
+- `unix:/tmp/ratelimit.sock` — `/check` for nginx/Angie
 - `127.0.0.1:8080` — web admin
 - `127.0.0.1:9091/metrics` — Prometheus
 - expects Redis at `127.0.0.1:6379`
@@ -129,7 +129,7 @@ See section 7 of `docs/specification.md` for details.
 - `/abuse/keys` — abusers from DB2
 - `/abuse/ips` — abusers from DB3
 
-No authentication — proxy through Angie if you need to gate access.
+No authentication — proxy through nginx/Angie if you need to gate access.
 
 ## Metrics
 
@@ -155,8 +155,8 @@ Counter values are cumulative since process start. Use Prometheus
 
 ## Deploy
 
-The systemd unit and a sample Angie config are described in sections 12
-and 13 of `docs/specification.md`. A ready-to-use Angie config lives in
+The systemd unit and a sample nginx/Angie config are described in sections 12
+and 13 of `docs/specification.md`. A ready-to-use nginx/Angie config lives in
 [`configs/angie.conf`](configs/angie.conf). The `.deb` package
 (`packaging/`) installs the systemd unit to
 `/lib/systemd/system/ratelimiter.service` and the binary to
@@ -184,7 +184,7 @@ ratelimiter/
 │   ├── store/                   # Redis (3 DBs)
 │   ├── admin/                   # web admin + html templates
 │   └── metrics/                 # Prometheus registry
-├── configs/                     # sample Angie config + systemd unit
+├── configs/                     # sample nginx/Angie config + systemd unit
 ├── packaging/                   # nfpm.yaml + .deb install scripts
 ├── docs/specification.md        # full specification (Russian)
 ├── .github/workflows/           # CI / release pipelines (GitHub)

@@ -3,18 +3,18 @@
 *Языки: [English](README.md) · **Русский***
 
 Сервис ограничения частоты запросов для API-сервера. Работает как
-вспомогательный HTTP-сервис, к которому Angie обращается через
+вспомогательный HTTP-сервис, к которому nginx/Angie обращается через
 `auth_request`. Не парсит протокол, не формирует бизнес-ответы — отвечает
 `200 OK` или `403 Forbidden` с пустым телом (403, а не 429, потому что
 `auth_request` пропускает в parent только 2xx / 401 / 403, остальное
-конвертит в 500). Кастомизация ответа делается на стороне Angie через
-`error_page`.
+конвертит в 500). Кастомизация ответа делается на стороне nginx/Angie
+через `error_page`.
 
 Полное ТЗ — [`docs/specification.md`](docs/specification.md).
 
 ## Что внутри
 
-- HTTP endpoint `GET /check` — единственная точка для Angie. Принимает
+- HTTP endpoint `GET /check` — единственная точка для nginx/Angie. Принимает
   `X-Api-Key` и `X-Real-IP`, возвращает 200 / 403.
 - in-memory счётчики с fixed-window алгоритмом и поддержкой burst.
 - Redis (3 БД): индивидуальные лимиты по api-key, нарушители по api-key,
@@ -26,7 +26,7 @@
 ## Архитектура
 
 ```
-Клиент ─► Angie ─auth_request─► ratelimiter ─► Redis (DB1/2/3)
+Клиент ─► nginx/Angie ─auth_request─► ratelimiter ─► Redis (DB1/2/3)
                   │
                   ├─[200]─► PHP upstream
                   └─[403]─► error_page → 200 с кастомным телом
@@ -53,7 +53,7 @@ make run
 
 Поднимает сервис на:
 
-- `unix:/tmp/ratelimit.sock` — `/check` для Angie
+- `unix:/tmp/ratelimit.sock` — `/check` для nginx/Angie
 - `127.0.0.1:8080` — веб-админка
 - `127.0.0.1:9091/metrics` — Prometheus
 - ожидает Redis на `127.0.0.1:6379`
@@ -131,7 +131,7 @@ HSET rate:limit:abc123 created_at 1717000000 limit 500
 - `/abuse/keys` — нарушители из DB2
 - `/abuse/ips` — нарушители из DB3
 
-Авторизации нет — предполагается проксирование через Angie.
+Авторизации нет — предполагается проксирование через nginx/Angie.
 
 ## Метрики
 
@@ -157,8 +157,8 @@ Counter-значения — кумулятивные с момента стар
 
 ## Деплой
 
-systemd-unit и пример конфига Angie — в разделах 12, 13 `docs/specification.md`.
-Готовый к использованию конфиг Angie лежит в [`configs/angie.conf`](configs/angie.conf).
+systemd-unit и пример конфига nginx/Angie — в разделах 12, 13 `docs/specification.md`.
+Готовый к использованию конфиг nginx/Angie лежит в [`configs/angie.conf`](configs/angie.conf).
 Бинарь устанавливается:
 
 ```bash
@@ -182,7 +182,7 @@ ratelimiter/
 │   ├── store/                   # Redis (3 БД)
 │   ├── admin/                   # веб-админка + html-шаблоны
 │   └── metrics/                 # Prometheus registry
-├── configs/                     # пример конфига Angie + systemd-unit
+├── configs/                     # пример конфига nginx/Angie + systemd-unit
 ├── packaging/                   # nfpm.yaml + скрипты установки .deb
 ├── docs/specification.md        # полное ТЗ
 ├── .github/workflows/           # CI / release пайплайны (GitHub)
