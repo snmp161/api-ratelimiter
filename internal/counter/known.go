@@ -124,6 +124,25 @@ func (m *KnownMap) Delete(key string) {
 	m.mu.Unlock()
 }
 
+// DeleteIfInactive removes the counter only if it is still inactive at the
+// moment the lock is taken. Returns true if a counter was deleted. Used by
+// cleanup to avoid dropping a counter that was updated between Snapshot()
+// and the delete decision.
+func (m *KnownMap) DeleteIfInactive(key string, now time.Time) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.counters[key]
+	if !ok {
+		return false
+	}
+	currentSlot := now.Unix() / m.windowS
+	if currentSlot != c.Slot && now.Sub(c.LastRequest) >= time.Duration(m.windowS)*time.Second {
+		delete(m.counters, key)
+		return true
+	}
+	return false
+}
+
 func (m *KnownMap) Len() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

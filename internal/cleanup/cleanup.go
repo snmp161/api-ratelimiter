@@ -103,8 +103,10 @@ func (c *Cleanup) runKnown(ctx context.Context, now time.Time) (deleted, transfe
 			deleted++
 			continue
 		}
-		if c.known.IsInactive(snap.KnownCounter, now) {
-			c.known.Delete(snap.Key)
+		// Atomic check-and-delete: a request may have arrived after
+		// Snapshot() and made the counter active; DeleteIfInactive
+		// re-reads under the lock before dropping.
+		if c.known.DeleteIfInactive(snap.Key, now) {
 			deleted++
 		}
 	}
@@ -113,33 +115,38 @@ func (c *Cleanup) runKnown(ctx context.Context, now time.Time) (deleted, transfe
 
 func (c *Cleanup) runUnknown(ctx context.Context, now time.Time) (deleted, transferred int) {
 	for _, snap := range c.unknown.Snapshot() {
-		inactive := c.unknown.IsInactive(snap.UnknownCounter, now)
+		// AbuseHits is monotonic — if the snapshot says transfer, the
+		// live counter still says transfer.
 		shouldTransfer := snap.AbuseHits >= c.transferThreshold
 
 		if shouldTransfer {
-			if err := c.transfer(ctx, snap); err != nil {
+			// Re-read the counter under the lock so the transferred
+			// record reflects requests that landed between Snapshot()
+			// and now. Counter may have been deleted concurrently — skip
+			// if so.
+			live, ok := c.unknown.Get(snap.Key)
+			if !ok {
+				continue
+			}
+			liveSnap := counter.UnknownSnapshot{Key: snap.Key, UnknownCounter: live}
+			if err := c.transfer(ctx, liveSnap); err != nil {
 				c.metrics.RedisErrorsTotal.Inc()
 				c.logger.Warn("upsert to abuse db failed", "key", snap.Key, "err", err)
-				// Even on error: keep in memory if active, drop if inactive.
-				// This matches the "просто удалить из памяти" branch when we
-				// can't write the record — preferable to leaking memory
-				// indefinitely on persistent Redis failure.
-				if inactive {
-					c.unknown.Delete(snap.Key)
+				// On persistent Redis failure: drop if inactive to avoid
+				// leaking memory; keep if a request just arrived.
+				if c.unknown.DeleteIfInactive(snap.Key, now) {
 					deleted++
 				}
 				continue
 			}
 			transferred++
-			if inactive {
-				c.unknown.Delete(snap.Key)
+			if c.unknown.DeleteIfInactive(snap.Key, now) {
 				deleted++
 			}
 			continue
 		}
 
-		if inactive {
-			c.unknown.Delete(snap.Key)
+		if c.unknown.DeleteIfInactive(snap.Key, now) {
 			deleted++
 		}
 	}
