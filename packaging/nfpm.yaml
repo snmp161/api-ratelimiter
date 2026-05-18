@@ -8,7 +8,7 @@ priority: optional
 maintainer: Infrastructure <infra@example.com>
 description: |
   HTTP rate limiter for API servers using nginx/Angie auth_request.
-  Provides a /check endpoint that returns 200 / 429 based on per-key
+  Provides a /check endpoint that returns 200 / 403 based on per-key
   limits stored in Redis and in-memory fixed-window counters.
 homepage: https://example.com/ratelimiter
 license: Proprietary
