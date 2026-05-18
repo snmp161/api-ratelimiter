@@ -6,8 +6,8 @@ After=network.target redis-server.service
 Type=simple
 User=www-data
 Group=www-data
-ExecStart=/usr/bin/ratelimiter \
-    --listen unix:/run/ratelimiter/ratelimit.sock \
+ExecStart=/usr/bin/api-ratelimiter \
+    --listen unix:/run/api-ratelimiter/ratelimit.sock \
     --socket-mode 0666 \
     --admin-listen 127.0.0.1:8080 \
     --metrics-listen 127.0.0.1:9091 \
@@ -21,7 +21,7 @@ ExecStart=/usr/bin/ratelimiter \
     --abuse-ttl 15 \
     --abuse-multiplier 10 \
     --abuse-transfer-threshold 3
-RuntimeDirectory=ratelimiter
+RuntimeDirectory=api-ratelimiter
 RuntimeDirectoryMode=0755
 Restart=always
 RestartSec=3

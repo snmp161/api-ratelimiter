@@ -62,16 +62,16 @@ jobs:
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -trimpath -ldflags="-X main.Version=${VERSION} -s -w" \
-            -o ratelimiter ./cmd/ratelimiter
+            -o api-ratelimiter ./cmd/api-ratelimiter
 
       - name: Package tarball
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
           mkdir -p dist
-          tar czf "dist/ratelimiter-${VERSION}-linux-amd64.tar.gz" ratelimiter
-          (cd dist && sha256sum "ratelimiter-${VERSION}-linux-amd64.tar.gz" \
-            > "ratelimiter-${VERSION}-linux-amd64.tar.gz.sha256")
+          tar czf "dist/api-ratelimiter-${VERSION}-linux-amd64.tar.gz" api-ratelimiter
+          (cd dist && sha256sum "api-ratelimiter-${VERSION}-linux-amd64.tar.gz" \
+            > "api-ratelimiter-${VERSION}-linux-amd64.tar.gz.sha256")
 
       - name: Install nfpm
         run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.3
@@ -80,10 +80,10 @@ jobs:
         env:
           VERSION: ${{ steps.vars.outputs.version_num }}
         run: |
-          nfpm pkg --packager deb --target "dist/ratelimiter_${VERSION}_amd64.deb" \
+          nfpm pkg --packager deb --target "dist/api-ratelimiter_${VERSION}_amd64.deb" \
             -f packaging/nfpm.yaml
-          (cd dist && sha256sum "ratelimiter_${VERSION}_amd64.deb" \
-            > "ratelimiter_${VERSION}_amd64.deb.sha256")
+          (cd dist && sha256sum "api-ratelimiter_${VERSION}_amd64.deb" \
+            > "api-ratelimiter_${VERSION}_amd64.deb.sha256")
 
       - uses: actions/upload-artifact@v4
         with:

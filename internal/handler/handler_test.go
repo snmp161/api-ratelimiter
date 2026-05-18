@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/metrics"
 )
 
 type spyDecider struct {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"ratelimiter/internal/counter"
-	"ratelimiter/internal/metrics"
-	"ratelimiter/internal/store"
+	"api-ratelimiter/internal/counter"
+	"api-ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/store"
 )
 
 // Store is the subset of store.Store used by cleanup. Defining the interface

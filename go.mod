@@ -1,4 +1,4 @@
-module ratelimiter
+module api-ratelimiter
 
 go 1.21
 

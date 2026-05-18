@@ -19,10 +19,10 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	dto "github.com/prometheus/client_model/go"
 
-	"ratelimiter/internal/config"
-	"ratelimiter/internal/counter"
-	"ratelimiter/internal/metrics"
-	"ratelimiter/internal/store"
+	"api-ratelimiter/internal/config"
+	"api-ratelimiter/internal/counter"
+	"api-ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/store"
 )
 
 func newTestServer(t *testing.T) (*Server, *miniredis.Miniredis, *counter.KnownMap, *counter.UnknownMap) {

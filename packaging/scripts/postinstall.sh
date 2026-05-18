@@ -11,9 +11,9 @@ fi
 
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload
-    systemctl enable ratelimiter.service >/dev/null 2>&1 || true
-    if [ "$1" = "configure" ] && systemctl is-active --quiet ratelimiter.service; then
-        systemctl restart ratelimiter.service || true
+    systemctl enable api-ratelimiter.service >/dev/null 2>&1 || true
+    if [ "$1" = "configure" ] && systemctl is-active --quiet api-ratelimiter.service; then
+        systemctl restart api-ratelimiter.service || true
     fi
 fi
 

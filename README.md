@@ -35,7 +35,7 @@ See section 2 of `docs/specification.md` for details.
 ## Build
 
 ```bash
-make build              # builds ./ratelimiter (LDFLAGS: -s -w, version from git tag)
+make build              # builds ./api-ratelimiter (LDFLAGS: -s -w, version from git tag)
 make test               # unit tests
 make test-cover         # coverage report (coverage.html)
 make lint               # golangci-lint (requires golangci-lint in PATH)
@@ -160,11 +160,11 @@ The systemd unit and a sample nginx/Angie config are described in sections 12
 and 13 of `docs/specification.md`. A ready-to-use nginx/Angie config lives in
 [`configs/nginx.example.conf`](configs/nginx.example.conf). The `.deb` package
 (`packaging/`) installs the systemd unit to
-`/lib/systemd/system/ratelimiter.service` and the binary to
-`/usr/bin/ratelimiter`. For ad-hoc installs from source:
+`/lib/systemd/system/api-ratelimiter.service` and the binary to
+`/usr/bin/api-ratelimiter`. For ad-hoc installs from source:
 
 ```bash
-sudo make install      # → /usr/local/bin/ratelimiter
+sudo make install      # → /usr/local/bin/api-ratelimiter
 ```
 
 The version embedded in the binary comes from
@@ -174,8 +174,8 @@ it falls back to `dev`.
 ## Project layout
 
 ```
-ratelimiter/
-├── cmd/ratelimiter/main.go      # entry point
+api-ratelimiter/
+├── cmd/api-ratelimiter/main.go      # entry point
 ├── internal/
 │   ├── config/                  # flags, validation
 │   ├── counter/                 # KnownCounters, UnknownCounters

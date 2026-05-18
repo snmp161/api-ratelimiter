@@ -20,10 +20,10 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"ratelimiter/internal/config"
-	"ratelimiter/internal/counter"
-	"ratelimiter/internal/metrics"
-	"ratelimiter/internal/store"
+	"api-ratelimiter/internal/config"
+	"api-ratelimiter/internal/counter"
+	"api-ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/store"
 )
 
 //go:embed templates/*.html

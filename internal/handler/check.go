@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/metrics"
 )
 
 type Decider interface {
@@ -78,7 +78,7 @@ func (c *Check) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //     working map / set, which is non-trivial with auth_request because
 //     $arg_* in the subrequest is empty (nginx#761).
 //  2. Query parameter ?api_key= or ?token= on /check itself — set by
-//     `proxy_pass http://ratelimiter/check?api_key=$client_key`.
+//     `proxy_pass http://api-ratelimiter/check?api_key=$client_key`.
 //  3. X-Original-URI header — set by nginx/Angie via
 //     `proxy_set_header X-Original-URI $request_uri`. We parse it
 //     server-side and pull api_key/token out. This is the most robust

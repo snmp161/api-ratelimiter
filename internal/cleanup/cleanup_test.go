@@ -14,9 +14,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"ratelimiter/internal/counter"
-	"ratelimiter/internal/metrics"
-	"ratelimiter/internal/store"
+	"api-ratelimiter/internal/counter"
+	"api-ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/store"
 )
 
 type fakeStore struct {

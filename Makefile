@@ -1,11 +1,11 @@
-BINARY   = ratelimiter
+BINARY   = api-ratelimiter
 VERSION  = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  = -ldflags "-X main.Version=$(VERSION) -s -w"
 
 .PHONY: build run test test-verbose test-cover clean install lint
 
 build:
-	go build $(LDFLAGS) -o $(BINARY) ./cmd/ratelimiter
+	go build $(LDFLAGS) -o $(BINARY) ./cmd/api-ratelimiter
 
 run: build
 	./$(BINARY) \

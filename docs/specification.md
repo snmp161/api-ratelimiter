@@ -333,7 +333,7 @@ TTL:    --abuse-ttl минут, обновляется при каждом upser
 
 ```bash
 # Unix socket (рекомендуется для single-instance)
-ratelimiter \
+api-ratelimiter \
   --listen unix:/run/ratelimit.sock \
   --socket-mode 0666 \
   --admin-listen 127.0.0.1:8080 \
@@ -350,7 +350,7 @@ ratelimiter \
   --abuse-transfer-threshold 3
 
 # TCP (для горизонтального масштабирования)
-ratelimiter \
+api-ratelimiter \
   --listen 127.0.0.1:9090 \
   --admin-listen 127.0.0.1:8080 \
   --metrics-listen 127.0.0.1:9091 \
@@ -374,7 +374,7 @@ ratelimiter \
 1. Заголовок `X-Api-Key` — nginx/Angie ставит его явно через `proxy_set_header`.
 2. Query-параметры `?api_key=...` или `?token=...` на самом `/check` —
    удобно когда nginx/Angie может извлечь значение и положить в URL через
-   `proxy_pass http://ratelimiter/check?api_key=$client_key`.
+   `proxy_pass http://api-ratelimiter/check?api_key=$client_key`.
 3. **Заголовок `X-Original-URI`** — nginx/Angie передаёт сюда `$request_uri`
    родительского запроса. Сервис парсит URI и достаёт `api_key` / `token`
    из его query-строки. Это **рекомендуемый способ**: `$request_uri` —
@@ -631,8 +631,8 @@ nginx#761, унаследовано в Angie), поэтому map по `$arg_api
 
 Поддерживаются два сценария «трафик идёт мимо лимитера»:
 
-1. **Сервис остановлен / упал** (`systemctl stop ratelimiter`, рестарт, краш).
-   В `upstream ratelimiter` рядом с реальным бэкендом прописан `backup`-сервер
+1. **Сервис остановлен / упал** (`systemctl stop api-ratelimiter`, рестарт, краш).
+   В `upstream api-ratelimiter` рядом с реальным бэкендом прописан `backup`-сервер
    — это in-nginx-затычка, всегда отвечающая `200` на `/check`. При
    `max_fails=1 fail_timeout=2s` nginx за один неудачный коннект помечает
    primary как failed и шлёт subrequest'ы на backup. По возвращению сервиса
@@ -640,9 +640,9 @@ nginx#761, унаследовано в Angie), поэтому map по `$arg_api
 
 2. **Per-request exemption** (внутренний мониторинг, allow-list ключей/IP,
    служебный трафик). Через `map $ratelimit_upstream` оператор маршрутизирует
-   выбранные запросы на отдельный upstream `ratelimiter_bypass`, который
+   выбранные запросы на отдельный upstream `api-ratelimiter_bypass`, который
    состоит **только** из затычки — лимитер вообще не дёргается. Дефолт — все
-   запросы идут на `ratelimiter` (с обычным failover'ом).
+   запросы идут на `api-ratelimiter` (с обычным failover'ом).
 
 Затычка — отдельный `server { listen unix:... return 200; }` в том же nginx,
 не отдельный процесс.
@@ -661,33 +661,33 @@ upstream php_api {
 
 # Real + backup stub. На стоп systemd-юнита nginx за один failed-connect
 # переключается на backup.
-upstream ratelimiter {
-    server unix:/run/ratelimiter/ratelimit.sock max_fails=1 fail_timeout=2s;
-    server unix:/run/ratelimiter-stub.sock backup;
+upstream api-ratelimiter {
+    server unix:/run/api-ratelimiter/ratelimit.sock max_fails=1 fail_timeout=2s;
+    server unix:/run/api-ratelimiter-stub.sock backup;
     keepalive 32;
 }
 
 # Только затычка. Выбирается через $ratelimit_upstream для exempt-трафика.
-upstream ratelimiter_bypass {
-    server unix:/run/ratelimiter-stub.sock;
+upstream api-ratelimiter_bypass {
+    server unix:/run/api-ratelimiter-stub.sock;
     keepalive 8;
 }
 
 # In-nginx stub.
 server {
-    listen unix:/run/ratelimiter-stub.sock;
+    listen unix:/run/api-ratelimiter-stub.sock;
     access_log /var/log/nginx/ratelimit-bypass.log;
     location / { return 200; }
 }
 
-# Switch — default ratelimiter, "ratelimiter_bypass" для exempt-условий.
+# Switch — default api-ratelimiter, "api-ratelimiter_bypass" для exempt-условий.
 # Шаблон — оператор подставляет реальные условия:
 #   map $arg_api_key $ratelimit_upstream {
-#       default            ratelimiter;
-#       "internal-monitor" ratelimiter_bypass;
+#       default            api-ratelimiter;
+#       "internal-monitor" api-ratelimiter_bypass;
 #   }
 map $request_uri $ratelimit_upstream {
-    default ratelimiter;
+    default api-ratelimiter;
 }
 
 server {
@@ -759,14 +759,14 @@ server {
 ## 13. Деплой
 
 Поставка — `.deb`-пакет под `linux/amd64`, собираемый в CI (см. раздел 18).
-Пакет кладёт бинарь в `/usr/bin/ratelimiter`, unit — в
-`/lib/systemd/system/ratelimiter.service`. Сервис запускается под
+Пакет кладёт бинарь в `/usr/bin/api-ratelimiter`, unit — в
+`/lib/systemd/system/api-ratelimiter.service`. Сервис запускается под
 `www-data` (пользователь существует на любой машине с PHP/nginx;
 postinstall-скрипт создаёт его, если не нашёл, через `adduser --system`).
 `www-data` при удалении пакета не удаляется, т.к. шарится с другими сервисами.
 
 Альтернатива для ручной установки — `make install` (бинарь попадает
-в `/usr/local/bin/ratelimiter`, unit нужно положить отдельно).
+в `/usr/local/bin/api-ratelimiter`, unit нужно положить отдельно).
 
 ### Systemd unit
 
@@ -779,8 +779,8 @@ After=network.target redis-server.service
 Type=simple
 User=www-data
 Group=www-data
-ExecStart=/usr/bin/ratelimiter \
-    --listen unix:/run/ratelimiter/ratelimit.sock \
+ExecStart=/usr/bin/api-ratelimiter \
+    --listen unix:/run/api-ratelimiter/ratelimit.sock \
     --socket-mode 0666 \
     --admin-listen 127.0.0.1:8080 \
     --metrics-listen 127.0.0.1:9091 \
@@ -794,7 +794,7 @@ ExecStart=/usr/bin/ratelimiter \
     --abuse-ttl 15 \
     --abuse-multiplier 10 \
     --abuse-transfer-threshold 3
-RuntimeDirectory=ratelimiter
+RuntimeDirectory=api-ratelimiter
 RuntimeDirectoryMode=0755
 Restart=always
 RestartSec=3
@@ -810,7 +810,7 @@ PrivateDevices=true
 WantedBy=multi-user.target
 ```
 
-Сокет лежит в `/run/ratelimiter/ratelimit.sock` (внутри `RuntimeDirectory`),
+Сокет лежит в `/run/api-ratelimiter/ratelimit.sock` (внутри `RuntimeDirectory`),
 поэтому пути в `configs/nginx.example.conf` и в unit совпадают.
 
 ### Graceful shutdown
@@ -892,9 +892,9 @@ SIGTERM/SIGINT
 ## 16. Структура Go-проекта
 
 ```
-ratelimiter/
+api-ratelimiter/
 ├── cmd/
-│   └── ratelimiter/
+│   └── api-ratelimiter/
 │       └── main.go              # точка входа: парсинг флагов, инициализация, запуск
 ├── internal/
 │   ├── config/
@@ -926,7 +926,7 @@ ratelimiter/
 │       └── metrics.go           # определение и регистрация Prometheus-метрик
 ├── configs/
 │   ├── nginx.example.conf       # образец конфига nginx/Angie
-│   └── ratelimiter.service      # systemd unit (используется и в .deb)
+│   └── api-ratelimiter.service      # systemd unit (используется и в .deb)
 ├── packaging/
 │   ├── nfpm.yaml                # описание .deb пакета (nfpm)
 │   └── scripts/
@@ -1032,14 +1032,14 @@ make test-cover    # с покрытием (генерирует coverage.html)
 ### Makefile
 
 ```makefile
-BINARY   = ratelimiter
+BINARY   = api-ratelimiter
 VERSION  = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  = -ldflags "-X main.Version=$(VERSION) -s -w"
 
 .PHONY: build run test test-verbose test-cover clean install lint
 
 build:
-	go build $(LDFLAGS) -o $(BINARY) ./cmd/ratelimiter
+	go build $(LDFLAGS) -o $(BINARY) ./cmd/api-ratelimiter
 
 run: build
 	./$(BINARY) \
@@ -1094,8 +1094,8 @@ install: build
 
 | Артефакт                                              | Где лежит после публикации                                  |
 |-------------------------------------------------------|-------------------------------------------------------------|
-| `ratelimiter-vX.Y.Z-linux-amd64.tar.gz` (+ `.sha256`) | GitHub Releases · GitLab Generic Packages + Releases        |
-| `ratelimiter_X.Y.Z_amd64.deb`           (+ `.sha256`) | GitHub Releases · GitLab Generic Packages + Releases        |
+| `api-ratelimiter-vX.Y.Z-linux-amd64.tar.gz` (+ `.sha256`) | GitHub Releases · GitLab Generic Packages + Releases        |
+| `api-ratelimiter_X.Y.Z_amd64.deb`           (+ `.sha256`) | GitHub Releases · GitLab Generic Packages + Releases        |
 
 `.deb` собирается через `nfpm` (`packaging/nfpm.yaml`), включает unit и
 post-/pre-install скрипты из `packaging/scripts/` (см. раздел 13).

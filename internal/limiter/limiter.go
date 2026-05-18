@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"ratelimiter/internal/counter"
-	"ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/counter"
+	"api-ratelimiter/internal/metrics"
 )
 
 // LimitLookup matches store.Store.LookupLimit. Pulled out to allow tests to

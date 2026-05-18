@@ -1,4 +1,4 @@
-name: ratelimiter
+name: api-ratelimiter
 arch: amd64
 platform: linux
 version: ${VERSION}
@@ -11,22 +11,22 @@ description: |
   nginx/Angie via auth_request. Provides a /check endpoint that returns
   200 / 403 based on per-key limits stored in Redis and in-memory
   fixed-window counters.
-homepage: https://example.com/ratelimiter
+homepage: https://example.com/api-ratelimiter
 license: Apache-2.0
 
 depends:
   - adduser
 
 contents:
-  - src: ./ratelimiter
-    dst: /usr/bin/ratelimiter
+  - src: ./api-ratelimiter
+    dst: /usr/bin/api-ratelimiter
     file_info:
       mode: 0755
       owner: root
       group: root
 
-  - src: ./configs/ratelimiter.service
-    dst: /lib/systemd/system/ratelimiter.service
+  - src: ./configs/api-ratelimiter.service
+    dst: /lib/systemd/system/api-ratelimiter.service
     file_info:
       mode: 0644
       owner: root

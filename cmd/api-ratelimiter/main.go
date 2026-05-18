@@ -20,14 +20,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 
-	"ratelimiter/internal/admin"
-	"ratelimiter/internal/cleanup"
-	"ratelimiter/internal/config"
-	"ratelimiter/internal/counter"
-	"ratelimiter/internal/handler"
-	"ratelimiter/internal/limiter"
-	"ratelimiter/internal/metrics"
-	"ratelimiter/internal/store"
+	"api-ratelimiter/internal/admin"
+	"api-ratelimiter/internal/cleanup"
+	"api-ratelimiter/internal/config"
+	"api-ratelimiter/internal/counter"
+	"api-ratelimiter/internal/handler"
+	"api-ratelimiter/internal/limiter"
+	"api-ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/store"
 )
 
 // Version is replaced at build time via -ldflags. Default "dev" when built
@@ -53,7 +53,7 @@ func run() error {
 	logger := newLogger(cfg)
 	slog.SetDefault(logger)
 
-	logger.Info("ratelimiter starting",
+	logger.Info("api-ratelimiter starting",
 		"version", Version,
 		"listen", cfg.Listen,
 		"socket_mode", cfg.SocketMode,
@@ -238,7 +238,7 @@ func run() error {
 	cancel()
 	wg.Wait()
 
-	logger.Info("ratelimiter stopped")
+	logger.Info("api-ratelimiter stopped")
 	return nil
 }
 

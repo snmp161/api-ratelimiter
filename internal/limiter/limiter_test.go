@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"ratelimiter/internal/counter"
-	"ratelimiter/internal/metrics"
+	"api-ratelimiter/internal/counter"
+	"api-ratelimiter/internal/metrics"
 )
 
 type fakeStore struct {

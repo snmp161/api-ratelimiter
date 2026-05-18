@@ -37,7 +37,7 @@
 ## Сборка
 
 ```bash
-make build              # бинарь ./ratelimiter (LDFLAGS: -s -w, версия из git tag)
+make build              # бинарь ./api-ratelimiter (LDFLAGS: -s -w, версия из git tag)
 make test               # юнит-тесты
 make test-cover         # отчёт coverage.html
 make lint               # golangci-lint (требует установки golangci-lint)
@@ -163,7 +163,7 @@ systemd-unit и пример конфига nginx/Angie — в разделах 
 Бинарь устанавливается:
 
 ```bash
-sudo make install      # → /usr/local/bin/ratelimiter
+sudo make install      # → /usr/local/bin/api-ratelimiter
 ```
 
 Версия бинаря берётся из git tag (`git describe --tags --always --dirty`).
@@ -172,8 +172,8 @@ sudo make install      # → /usr/local/bin/ratelimiter
 ## Структура проекта
 
 ```
-ratelimiter/
-├── cmd/ratelimiter/main.go      # точка входа
+api-ratelimiter/
+├── cmd/api-ratelimiter/main.go      # точка входа
 ├── internal/
 │   ├── config/                  # флаги, валидация
 │   ├── counter/                 # KnownCounters, UnknownCounters

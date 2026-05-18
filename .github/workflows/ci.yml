@@ -78,7 +78,7 @@ jobs:
       - run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -trimpath -ldflags="-s -w" \
-            -o ratelimiter ./cmd/ratelimiter
+            -o api-ratelimiter ./cmd/api-ratelimiter
           # Smoke test: verify the binary actually runs. pflag (and the
           # stdlib flag package) exit with code 2 on --help — both 0 and
           # 2 are "normal" outcomes here; anything else (segfault,
@@ -88,8 +88,8 @@ jobs:
           # under `bash -eo pipefail`, so an exit 2 would otherwise kill
           # the step before we get to inspect it.
           rc=0
-          ./ratelimiter --help > /dev/null || rc=$?
+          ./api-ratelimiter --help > /dev/null || rc=$?
           if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
-            echo "ratelimiter --help exited with unexpected code: $rc"
+            echo "api-ratelimiter --help exited with unexpected code: $rc"
             exit 1
           fi
