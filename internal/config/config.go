@@ -136,20 +136,11 @@ func (c *Config) SocketModeParsed() (fs.FileMode, error) {
 	return fs.FileMode(v), nil
 }
 
-// IsUnixListen reports whether --listen is a unix socket spec.
-func (c *Config) IsUnixListen() bool {
-	return strings.HasPrefix(c.Listen, "unix:")
-}
-
 func (c *Config) WindowSeconds() int64 {
 	if c.Window == "minute" {
 		return 60
 	}
 	return 1
-}
-
-func (c *Config) WindowDuration() time.Duration {
-	return time.Duration(c.WindowSeconds()) * time.Second
 }
 
 func (c *Config) CleanupDuration() time.Duration {
