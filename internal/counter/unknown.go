@@ -3,6 +3,7 @@ package counter
 import (
 	"sync"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -143,8 +144,12 @@ func (m *UnknownMap) Len() int {
 	return len(m.counters)
 }
 
+var unknownCounterStructBytes = int64(unsafe.Sizeof(UnknownCounter{}))
+
+// SizeBytes — same accounting as KnownMap.SizeBytes; see comment there
+// for the breakdown of per-entry overhead constants.
 func (m *UnknownMap) SizeBytes() int64 {
-	const perEntry = 16 + 80
+	perEntry := int64(stringHeaderBytes+mapValuePtrBytes+mapBucketAmortized) + unknownCounterStructBytes
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var total int64

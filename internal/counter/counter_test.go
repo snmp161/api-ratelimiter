@@ -217,6 +217,46 @@ func TestUnknown_NamespaceKeysDoNotCollide(t *testing.T) {
 	}
 }
 
+func TestKnown_SizeBytes_AccountsForStructAndKey(t *testing.T) {
+	m := NewKnownMap(1, nil)
+	if m.SizeBytes() != 0 {
+		t.Fatalf("empty map: SizeBytes=%d want 0", m.SizeBytes())
+	}
+	m.RecordRequest("abc", 10, 0)
+	got := m.SizeBytes()
+	// Per-entry: 16 (string header) + 8 (map ptr) + 17 (bucket) + 88 (struct) + 3 (len("abc"))
+	wantMin := int64(80 + 3) // generous lower bound
+	if got < wantMin {
+		t.Fatalf("SizeBytes=%d, expected at least %d for one entry", got, wantMin)
+	}
+	// Add another entry; total should grow by (perEntry + 5).
+	before := got
+	m.RecordRequest("xy", 10, 0)
+	delta := m.SizeBytes() - before
+	if delta < 50 || delta > 200 {
+		t.Errorf("delta=%d looks wrong (one entry + 2-char key should be ~130b)", delta)
+	}
+}
+
+func TestUnknown_SizeBytes_GrowsWithEntries(t *testing.T) {
+	m := NewUnknownMap(1, nil)
+	if m.SizeBytes() != 0 {
+		t.Fatalf("empty map: SizeBytes=%d want 0", m.SizeBytes())
+	}
+	for i := 0; i < 100; i++ {
+		// fmt.Sprintf would pull in fmt; cheap manual unique key.
+		m.RecordRequest("key:"+string(rune('a'+i%26))+string(rune('a'+i/26)), 10, 0, 10)
+	}
+	if m.Len() != 100 {
+		t.Fatalf("setup: expected 100 unique counters, got %d", m.Len())
+	}
+	got := m.SizeBytes()
+	// 100 entries × ~130 bytes each = ~13000 minimum
+	if got < 10000 {
+		t.Errorf("SizeBytes=%d, expected >= 10000 for 100 entries", got)
+	}
+}
+
 func TestKnown_IsInactive(t *testing.T) {
 	c := &clock{t: time.Unix(100, 0)}
 	m := NewKnownMap(1, c.now) // window = 1s, inactivity threshold = 2*window = 2s

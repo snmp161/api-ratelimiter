@@ -3,6 +3,7 @@ package counter
 import (
 	"sync"
 	"time"
+	"unsafe"
 )
 
 type KnownCounter struct {
@@ -148,9 +149,28 @@ func (m *KnownMap) Len() int {
 	return len(m.counters)
 }
 
-// SizeBytes is a rough estimate (used for memory metric).
+// SizeBytes is an estimate of the memory occupied by the map (used for the
+// ratelimit_memory_bytes metric). Per-entry overhead is broken down to
+// keep the number honest as types evolve:
+//   - stringHeaderBytes   — Go string header on the key
+//   - mapValuePtrBytes    — *KnownCounter slot in the underlying map
+//   - mapBucketAmortized  — amortised bucket bookkeeping (tophash + alignment + overflow)
+//   - sizeof(KnownCounter)— actual struct size, evaluated via unsafe.Sizeof
+//     so it auto-updates if fields are added
+//   - len(k)              — backing bytes of the key string
+//
+// All constants are package-level so both KnownMap.SizeBytes and
+// UnknownMap.SizeBytes share the same accounting.
+const (
+	stringHeaderBytes  = 16
+	mapValuePtrBytes   = 8
+	mapBucketAmortized = 17
+)
+
+var knownCounterStructBytes = int64(unsafe.Sizeof(KnownCounter{}))
+
 func (m *KnownMap) SizeBytes() int64 {
-	const perEntry = 16 + 80 // key string header + struct
+	perEntry := int64(stringHeaderBytes+mapValuePtrBytes+mapBucketAmortized) + knownCounterStructBytes
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var total int64
