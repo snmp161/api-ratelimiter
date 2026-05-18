@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,15 +15,18 @@ import (
 )
 
 type fakeStore struct {
-	mu        sync.Mutex
-	exists    map[string]bool
-	abuseK    map[string]store.AbuseRecord
-	abuseIP   map[string]store.AbuseRecord
-	keyTTL    map[string]time.Duration
-	ipTTL     map[string]time.Duration
-	dbErr     error
-	upsertEr  error
-	unhealthy bool
+	mu             sync.Mutex
+	exists         map[string]bool
+	abuseK         map[string]store.AbuseRecord
+	abuseIP        map[string]store.AbuseRecord
+	keyTTL         map[string]time.Duration
+	ipTTL          map[string]time.Duration
+	dbErr          error
+	upsertEr       error
+	limitExistsEr  error
+	unhealthy      bool
+	dbSizeCalls    atomic.Int64
+	panicOnDBSize  atomic.Int64 // panic on first N calls; decrements each call
 }
 
 func newFakeStore() *fakeStore {
@@ -40,6 +44,9 @@ func (f *fakeStore) IsHealthy() bool { return !f.unhealthy }
 func (f *fakeStore) LimitExists(_ context.Context, k string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.limitExistsEr != nil {
+		return false, f.limitExistsEr
+	}
 	return f.exists[k], nil
 }
 func (f *fakeStore) UpsertAbuseKey(_ context.Context, k string, r store.AbuseRecord, ttl time.Duration) error {
@@ -63,6 +70,11 @@ func (f *fakeStore) UpsertAbuseIP(_ context.Context, ip string, r store.AbuseRec
 	return nil
 }
 func (f *fakeStore) DBSize(_ context.Context) (int64, int64, int64, error) {
+	f.dbSizeCalls.Add(1)
+	if f.panicOnDBSize.Load() > 0 {
+		f.panicOnDBSize.Add(-1)
+		panic("simulated DBSize panic")
+	}
 	if f.dbErr != nil {
 		return 0, 0, 0, f.dbErr
 	}
@@ -259,3 +271,81 @@ func TestCleanup_TransferKeyPrefix(t *testing.T) {
 		t.Fatal("key: prefix must NOT land in redisDB3 (abuseIP)")
 	}
 }
+
+// ───── Loop tests ─────────────────────────────────────────────────────
+
+// TestCleanup_Loop_TickerFiresRun verifies the production ticker loop
+// actually invokes Run() and exits cleanly when the context is cancelled.
+// The whole goroutine wiring is bypassed by other tests that call Run()
+// directly, so this is the only place that exercises Loop itself.
+func TestCleanup_Loop_TickerFiresRun(t *testing.T) {
+	_, _, fs, cl, _ := newSetup(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		cl.Loop(ctx, 5*time.Millisecond)
+	}()
+
+	// Wait up to 500ms for at least 2 ticks to land.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if fs.dbSizeCalls.Load() >= 2 {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	got := fs.dbSizeCalls.Load()
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Loop did not exit within 200ms of ctx cancel")
+	}
+	if got < 2 {
+		t.Fatalf("expected at least 2 Run() invocations, got %d", got)
+	}
+}
+
+// TestCleanup_Loop_RecoversFromPanic checks that a panic inside Run()
+// (modelled here as a panic from store.DBSize) doesn't kill the ticker
+// goroutine — subsequent ticks must still execute. The recover() inside
+// Loop is the only safety net against a future code change introducing
+// a panic on the cleanup path.
+func TestCleanup_Loop_RecoversFromPanic(t *testing.T) {
+	_, _, fs, cl, _ := newSetup(t)
+	fs.panicOnDBSize.Store(2) // first 2 Runs panic; subsequent ones succeed
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		cl.Loop(ctx, 5*time.Millisecond)
+	}()
+
+	// Need at least 4 attempts (2 to consume the panics, 2 more to prove
+	// the loop survived).
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if fs.dbSizeCalls.Load() >= 4 {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	calls := fs.dbSizeCalls.Load()
+	cancel()
+	<-done
+
+	if calls < 4 {
+		t.Fatalf("Loop did not survive panics: only %d Run() invocations (expected >= 4)", calls)
+	}
+	if fs.panicOnDBSize.Load() != 0 {
+		t.Fatalf("panic counter not drained: %d left", fs.panicOnDBSize.Load())
+	}
+}
+
+// Compile-time check that fakeStore satisfies the cleanup.Store interface.
+// Catches drift if the interface gains methods.
+var _ Store = (*fakeStore)(nil)
