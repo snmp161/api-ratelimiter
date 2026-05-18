@@ -1,5 +1,5 @@
 [Unit]
-Description=API Rate Limiter
+Description=api-ratelimiter
 After=network.target redis-server.service
 
 [Service]

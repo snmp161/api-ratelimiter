@@ -1,4 +1,4 @@
-# ratelimiter
+# api-ratelimiter
 
 *Языки: [English](README.md) · **Русский***
 
@@ -26,7 +26,7 @@
 ## Архитектура
 
 ```
-Клиент ─► nginx/Angie ─auth_request─► ratelimiter ─► Redis (DB1/2/3)
+Клиент ─► nginx/Angie ─auth_request─► api-ratelimiter ─► Redis (DB1/2/3)
                   │
                   ├─[200]─► PHP upstream
                   └─[403]─► error_page → 200 с кастомным телом

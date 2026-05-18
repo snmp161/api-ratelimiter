@@ -1,4 +1,4 @@
-# ratelimiter
+# api-ratelimiter
 
 *Languages: **English** · [Русский](README.ru.md)*
 
@@ -24,7 +24,7 @@ Full specification — [`docs/specification.md`](docs/specification.md) (Russian
 ## Architecture
 
 ```
-Client ─► nginx/Angie ─auth_request─► ratelimiter ─► Redis (DB1/2/3)
+Client ─► nginx/Angie ─auth_request─► api-ratelimiter ─► Redis (DB1/2/3)
                   │
                   ├─[200]─► PHP upstream
                   └─[403]─► error_page → 200 with custom body

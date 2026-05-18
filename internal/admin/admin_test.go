@@ -559,7 +559,7 @@ func TestRender_EmptyDatabaseRendersAllPages(t *testing.T) {
 		path   string
 		anchor string // must appear in the rendered body
 	}{
-		{"/", "ratelimiter"},
+		{"/", "api-ratelimiter"},
 		{"/limits", "redisDB1"},
 		{"/abuse/keys", "redisDB2"},
 		{"/abuse/ips", "redisDB3"},
