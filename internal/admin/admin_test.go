@@ -1,12 +1,15 @@
 package admin
 
 import (
+	"context"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -376,5 +379,222 @@ func TestNotFound(t *testing.T) {
 	srv.Routes().ServeHTTP(w, r)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status=%d want 404", w.Code)
+	}
+}
+
+// ───── Template edge-case rendering ─────────────────────────────────────
+//
+// These tests poke the four admin templates with empty/extreme/hostile
+// data so we catch broken templates at test time rather than letting
+// production users see a partial HTML response. Each test asserts the
+// status is 200 (or 4xx for empty-CSRF cases) and that the body contains
+// some well-known anchor, so a template that bails halfway is observable.
+
+func renderGet(t *testing.T, srv *Server, path string) (int, string) {
+	t.Helper()
+	r := httptest.NewRequest("GET", path, nil)
+	w := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(w, r)
+	return w.Code, w.Body.String()
+}
+
+func TestRender_EmptyDatabaseRendersAllPages(t *testing.T) {
+	srv, _, _, _ := newTestServer(t)
+	cases := []struct {
+		path   string
+		anchor string // must appear in the rendered body
+	}{
+		{"/", "ratelimiter"},
+		{"/limits", "redisDB1"},
+		{"/abuse/keys", "redisDB2"},
+		{"/abuse/ips", "redisDB3"},
+	}
+	for _, c := range cases {
+		code, body := renderGet(t, srv, c.path)
+		if code != http.StatusOK {
+			t.Errorf("%s: status=%d want 200", c.path, code)
+		}
+		if !strings.Contains(body, c.anchor) {
+			t.Errorf("%s: anchor %q missing — template likely broke", c.path, c.anchor)
+		}
+		// Sanity: body must look like a complete HTML page, not a
+		// truncated render.
+		if !strings.HasSuffix(strings.TrimSpace(body), "</html>") {
+			t.Errorf("%s: body doesn't end with </html> — render aborted midway?", c.path)
+		}
+	}
+}
+
+func TestRender_SpecialCharactersInKeys_EscapedNotInjected(t *testing.T) {
+	srv, mr, known, unknown := newTestServer(t)
+
+	hostile := `<script>alert("xss")</script>&"'`
+
+	// Put it in redisDB1 (limits page) and in the in-memory counters
+	// (top-25 path) and as a Redis abuse key.
+	mr.Select(store.DBLimits)
+	mr.HSet("rate:limit:"+hostile, "limit", "10", "created_at", "1700000000")
+	known.RecordRequest(hostile, 10, 0)
+	unknown.RecordRequest("key:"+hostile, 10, 0, 10)
+	unknown.RecordRequest("ip:"+hostile, 10, 0, 10) // not a valid IP but exercises the prefix path
+	if err := srv.store.UpsertAbuseKey(context.Background(), hostile, store.AbuseRecord{}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.store.UpsertAbuseIP(context.Background(), hostile, store.AbuseRecord{}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/limits", "/abuse/keys", "/abuse/ips"} {
+		code, body := renderGet(t, srv, path)
+		if code != http.StatusOK {
+			t.Errorf("%s: status=%d want 200", path, code)
+		}
+		// Verbatim <script> must not be present — html/template should
+		// have escaped it to &lt;script&gt;. If we ever swap to
+		// text/template by accident this catches it.
+		if strings.Contains(body, "<script>alert") {
+			t.Errorf("%s: unescaped <script> tag in body — XSS vulnerability", path)
+		}
+		if !strings.Contains(body, "&lt;script&gt;") {
+			t.Errorf("%s: expected escaped &lt;script&gt;, body didn't contain it", path)
+		}
+	}
+}
+
+func TestRender_BoundaryCounterValues(t *testing.T) {
+	srv, mr, _, _ := newTestServer(t)
+	// Write absurd values to a limit row to test integer formatting on
+	// the limits page.
+	mr.Select(store.DBLimits)
+	mr.HSet("rate:limit:big", "limit", strconv.FormatInt(math.MaxInt64, 10), "created_at", "0")
+	mr.HSet("rate:limit:zero", "limit", "0", "created_at", "0")
+
+	code, body := renderGet(t, srv, "/limits")
+	if code != http.StatusOK {
+		t.Fatalf("status=%d want 200", code)
+	}
+	if !strings.Contains(body, strconv.FormatInt(math.MaxInt64, 10)) {
+		t.Errorf("MaxInt64 limit not rendered")
+	}
+	// created_at == 0 → zero time → handler shows "—"
+	if !strings.Contains(body, "—") {
+		t.Errorf("zero CreatedAt should render as em dash, body lacks it")
+	}
+}
+
+func TestRender_ZeroAbuseEntryRendersWithDashes(t *testing.T) {
+	srv, _, _, _ := newTestServer(t)
+	// AbuseRecord with all zero fields — exercises fmtTime/fmtDuration
+	// on zero-value time and zero TTL.
+	if err := srv.store.UpsertAbuseKey(context.Background(), "z", store.AbuseRecord{}, 0); err != nil {
+		t.Fatal(err)
+	}
+	code, body := renderGet(t, srv, "/abuse/keys")
+	if code != http.StatusOK {
+		t.Fatalf("status=%d want 200", code)
+	}
+	if !strings.Contains(body, "z") {
+		t.Errorf("zero entry not rendered")
+	}
+	if !strings.HasSuffix(strings.TrimSpace(body), "</html>") {
+		t.Errorf("body truncated — template bailed on zero values?")
+	}
+}
+
+func TestRender_ConfirmPage(t *testing.T) {
+	srv, _, _, _ := newTestServer(t)
+	form := url.Values{"csrf_token": {srv.csrfToken}}
+	r := httptest.NewRequest("POST", "/abuse/keys/purge", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("confirm page status=%d want 200", w.Code)
+	}
+	body := w.Body.String()
+	checks := []string{"Permanently delete", "redisDB2", `name="confirm"`, `name="csrf_token"`, "Cancel"}
+	for _, c := range checks {
+		if !strings.Contains(body, c) {
+			t.Errorf("confirm.html missing %q", c)
+		}
+	}
+	if !strings.HasSuffix(strings.TrimSpace(body), "</html>") {
+		t.Errorf("confirm.html truncated")
+	}
+}
+
+func TestRender_IndexShowsAllFlagRowsAndMetrics(t *testing.T) {
+	srv, _, _, _ := newTestServer(t)
+	_, body := renderGet(t, srv, "/")
+
+	// Every flag from flagRows() must appear on the page.
+	expectedFlags := []string{
+		"--listen", "--socket-mode", "--admin-listen", "--metrics-listen",
+		"--redis-addr", "--redis-password", "--log-level", "--log-format",
+		"--global-limit", "--burst", "--window", "--cleanup-interval",
+		"--abuse-ttl", "--abuse-multiplier", "--abuse-transfer-threshold",
+	}
+	for _, f := range expectedFlags {
+		if !strings.Contains(body, f) {
+			t.Errorf("index page missing flag row %q", f)
+		}
+	}
+
+	// Every Prometheus metric registered in metrics.New() must appear.
+	expectedMetrics := []string{
+		"ratelimit_requests_total",
+		"ratelimit_counters_known_active",
+		"ratelimit_counters_unknown_active",
+		"ratelimit_memory_bytes",
+		"ratelimit_cleanup_runs_total",
+		"ratelimit_check_duration_seconds",
+	}
+	for _, m := range expectedMetrics {
+		if !strings.Contains(body, m) {
+			t.Errorf("index page missing metric %q", m)
+		}
+	}
+}
+
+func TestRender_PaginationBoundary(t *testing.T) {
+	srv, mr, _, _ := newTestServer(t)
+	// Seed exactly pageSize+1 entries so page 1 fills and page 2 has one.
+	mr.Select(store.DBLimits)
+	for i := 0; i < pageSize+1; i++ {
+		mr.HSet("rate:limit:k"+strconv.Itoa(i), "limit", "10", "created_at", "0")
+	}
+
+	_, body1 := renderGet(t, srv, "/limits?page=1")
+	if !strings.Contains(body1, "next →") {
+		t.Errorf("page=1: expected an enabled 'next →' link")
+	}
+	_, body2 := renderGet(t, srv, "/limits?page=2")
+	if !strings.Contains(body2, "← prev") {
+		t.Errorf("page=2: expected an enabled '← prev' link")
+	}
+	// page=999 — past end — must render without crashing the slice indexing.
+	code, body := renderGet(t, srv, "/limits?page=999")
+	if code != http.StatusOK {
+		t.Errorf("page=999: status=%d want 200 (out-of-range page must not crash)", code)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(body), "</html>") {
+		t.Errorf("page=999: body truncated")
+	}
+}
+
+func TestRender_SearchWithNoMatchesStillRendersFully(t *testing.T) {
+	srv, mr, _, _ := newTestServer(t)
+	mr.Select(store.DBLimits)
+	mr.HSet("rate:limit:abc", "limit", "10", "created_at", "0")
+
+	code, body := renderGet(t, srv, "/limits?q=nonexistent")
+	if code != http.StatusOK {
+		t.Fatalf("status=%d want 200", code)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(body), "</html>") {
+		t.Errorf("search-no-match: body truncated")
+	}
+	if !strings.Contains(body, "no entries") {
+		t.Errorf("empty-result page should show 'no entries'")
 	}
 }
