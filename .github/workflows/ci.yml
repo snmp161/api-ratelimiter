@@ -6,6 +6,14 @@ on:
     tags-ignore: ['**']
   pull_request:
 
+# Cancel an in-flight run when a newer commit lands on the same ref.
+# Saves CI minutes on rapid pushes / force-pushes during dev. Release
+# workflow has its own group below without cancel-in-progress so tagged
+# builds can't kill each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -28,7 +36,36 @@ jobs:
         with:
           go-version: '1.22'
           cache: true
-      - run: go test -race -v ./...
+
+      # go vet is also called by golangci-lint, but a dedicated step
+      # surfaces it as its own pass/fail in the Actions UI and makes
+      # vet failures unambiguous (vs a lint job that bundles many
+      # checks).
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test with coverage
+        run: |
+          go test -race -covermode=atomic -coverpkg=./... \
+            -coverprofile=coverage.out -v ./...
+
+      - name: Coverage summary
+        run: |
+          go tool cover -func=coverage.out | tee coverage-func.txt
+          {
+            echo "## Test coverage"
+            echo ''
+            echo '```'
+            tail -1 coverage-func.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage-func.txt
 
   build:
     runs-on: ubuntu-latest
@@ -42,4 +79,17 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -trimpath -ldflags="-s -w" \
             -o ratelimiter ./cmd/ratelimiter
-          ./ratelimiter --help 2>&1 | head -5 || true
+          # Smoke test: verify the binary actually runs. pflag (and the
+          # stdlib flag package) exit with code 2 on --help — both 0 and
+          # 2 are "normal" outcomes here; anything else (segfault,
+          # missing symbol, panic during init) fails the job. The
+          # previous `| head -5 || true` swallowed every error.
+          # `|| rc=$?` is needed because GitHub Actions runs scripts
+          # under `bash -eo pipefail`, so an exit 2 would otherwise kill
+          # the step before we get to inspect it.
+          rc=0
+          ./ratelimiter --help > /dev/null || rc=$?
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+            echo "ratelimiter --help exited with unexpected code: $rc"
+            exit 1
+          fi

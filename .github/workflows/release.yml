@@ -4,6 +4,12 @@ on:
   push:
     tags: ['v*']
 
+# Serialise tag builds so two near-simultaneous tags don't race. No
+# cancel-in-progress here — every tagged release must complete; killing
+# a partial release would leave inconsistent artifacts.
+concurrency:
+  group: release-${{ github.ref }}
+
 permissions:
   contents: write
 
