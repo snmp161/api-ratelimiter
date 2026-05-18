@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	dto "github.com/prometheus/client_model/go"
 
 	"ratelimiter/internal/config"
 	"ratelimiter/internal/counter"
@@ -472,6 +473,67 @@ func TestNotFound(t *testing.T) {
 		t.Fatalf("status=%d want 404", w.Code)
 	}
 }
+
+// ───── formatMetricValue per-type tests ─────────────────────────────
+
+func TestFormatMetricValue_Counter(t *testing.T) {
+	m := &dto.Metric{Counter: &dto.Counter{Value: float64Ptr(42)}}
+	got := formatMetricValue(m, dto.MetricType_COUNTER)
+	if got != "42" {
+		t.Errorf("Counter: got %q want %q", got, "42")
+	}
+}
+
+func TestFormatMetricValue_Gauge(t *testing.T) {
+	m := &dto.Metric{Gauge: &dto.Gauge{Value: float64Ptr(3.14)}}
+	got := formatMetricValue(m, dto.MetricType_GAUGE)
+	if got != "3.14" {
+		t.Errorf("Gauge: got %q want %q", got, "3.14")
+	}
+}
+
+func TestFormatMetricValue_Histogram(t *testing.T) {
+	m := &dto.Metric{Histogram: &dto.Histogram{
+		SampleCount: uint64Ptr(100),
+		SampleSum:   float64Ptr(12.5),
+	}}
+	got := formatMetricValue(m, dto.MetricType_HISTOGRAM)
+	if !strings.Contains(got, "count=100") || !strings.Contains(got, "sum=12.500000s") {
+		t.Errorf("Histogram: got %q", got)
+	}
+}
+
+func TestFormatMetricValue_Summary(t *testing.T) {
+	m := &dto.Metric{Summary: &dto.Summary{
+		SampleCount: uint64Ptr(50),
+		SampleSum:   float64Ptr(7.25),
+	}}
+	got := formatMetricValue(m, dto.MetricType_SUMMARY)
+	if !strings.Contains(got, "count=50") || !strings.Contains(got, "sum=7.250000") {
+		t.Errorf("Summary: got %q", got)
+	}
+}
+
+func TestFormatMetricValue_UnsupportedType(t *testing.T) {
+	got := formatMetricValue(&dto.Metric{}, dto.MetricType_UNTYPED)
+	if !strings.HasPrefix(got, "unsupported:") {
+		t.Errorf("UNTYPED: expected 'unsupported:' prefix, got %q", got)
+	}
+}
+
+func TestFormatMetricValue_NilSubmessages(t *testing.T) {
+	// Defensive: declared type says HISTOGRAM/SUMMARY but the
+	// submessage is nil. Should return "" rather than panicking.
+	if got := formatMetricValue(&dto.Metric{}, dto.MetricType_HISTOGRAM); got != "" {
+		t.Errorf("nil Histogram: got %q want empty", got)
+	}
+	if got := formatMetricValue(&dto.Metric{}, dto.MetricType_SUMMARY); got != "" {
+		t.Errorf("nil Summary: got %q want empty", got)
+	}
+}
+
+func float64Ptr(v float64) *float64 { return &v }
+func uint64Ptr(v uint64) *uint64    { return &v }
 
 // ───── Template edge-case rendering ─────────────────────────────────────
 //

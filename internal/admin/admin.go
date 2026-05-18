@@ -223,7 +223,7 @@ func (s *Server) metricRows() []metricRow {
 	for _, mf := range mfs {
 		name := mf.GetName()
 		help := mf.GetHelp()
-		typ := mf.GetType().String()
+		mfType := mf.GetType()
 		for _, mtr := range mf.GetMetric() {
 			label := name
 			if len(mtr.Label) > 0 {
@@ -235,8 +235,8 @@ func (s *Server) metricRows() []metricRow {
 			}
 			out = append(out, metricRow{
 				Name:  label,
-				Type:  typ,
-				Value: formatMetricValue(mtr),
+				Type:  mfType.String(),
+				Value: formatMetricValue(mtr, mfType),
 				Help:  help,
 			})
 		}
@@ -245,19 +245,45 @@ func (s *Server) metricRows() []metricRow {
 	return out
 }
 
-func formatMetricValue(m *dto.Metric) string {
-	switch {
-	case m.Counter != nil:
-		return strconv.FormatFloat(m.Counter.GetValue(), 'f', -1, 64)
-	case m.Gauge != nil:
-		return strconv.FormatFloat(m.Gauge.GetValue(), 'f', -1, 64)
-	case m.Histogram != nil:
-		h := m.Histogram
-		count := h.GetSampleCount()
-		sum := h.GetSampleSum()
-		return fmt.Sprintf("count=%d sum=%.6fs", count, sum)
+// formatMetricValue renders a single metric sample for the admin status
+// page. The MetricFamily-level type drives the switch — protobuf's
+// "inspect which oneof field is non-nil" pattern works but is harder to
+// read and bypasses the type system. Per-type formatters keep each
+// branch short and unit-testable.
+func formatMetricValue(m *dto.Metric, t dto.MetricType) string {
+	switch t {
+	case dto.MetricType_COUNTER:
+		return formatFloat(m.GetCounter().GetValue())
+	case dto.MetricType_GAUGE:
+		return formatFloat(m.GetGauge().GetValue())
+	case dto.MetricType_HISTOGRAM:
+		return formatHistogram(m.GetHistogram())
+	case dto.MetricType_SUMMARY:
+		return formatSummary(m.GetSummary())
+	default:
+		// UNTYPED / GAUGE_HISTOGRAM / future enum values — we don't
+		// register these but render something rather than blank so the
+		// admin notices.
+		return "unsupported: " + t.String()
 	}
-	return ""
+}
+
+func formatFloat(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+func formatHistogram(h *dto.Histogram) string {
+	if h == nil {
+		return ""
+	}
+	return fmt.Sprintf("count=%d sum=%.6fs", h.GetSampleCount(), h.GetSampleSum())
+}
+
+func formatSummary(s *dto.Summary) string {
+	if s == nil {
+		return ""
+	}
+	return fmt.Sprintf("count=%d sum=%.6f", s.GetSampleCount(), s.GetSampleSum())
 }
 
 // ----- /limits -----
