@@ -202,4 +202,4 @@ ratelimiter/
 
 ## Лицензия
 
-См. файл `LICENSE` (если опубликовано) или внутреннюю политику.
+Apache License 2.0 — см. [LICENSE](LICENSE).

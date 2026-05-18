@@ -11,7 +11,7 @@ description: |
   Provides a /check endpoint that returns 200 / 403 based on per-key
   limits stored in Redis and in-memory fixed-window counters.
 homepage: https://example.com/ratelimiter
-license: Proprietary
+license: Apache-2.0
 
 depends:
   - adduser

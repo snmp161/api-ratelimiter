@@ -204,4 +204,4 @@ ratelimiter/
 
 ## License
 
-See `LICENSE` if published, or your internal policy.
+Apache License 2.0 — see [LICENSE](LICENSE).
