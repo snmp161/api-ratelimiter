@@ -39,6 +39,9 @@ make build              # builds ./api-ratelimiter (LDFLAGS: -s -w, version from
 make test               # unit tests
 make test-cover         # coverage report (coverage.html)
 make lint               # golangci-lint (requires golangci-lint in PATH)
+
+# Integration tests (spawn binary + miniredis + HTTP probes; build-tag gated):
+go test -tags=integration -timeout=10m ./test/integration/...
 ```
 
 Requires Go **1.21+**, Redis **6.0+**.

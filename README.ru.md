@@ -41,6 +41,9 @@ make build              # бинарь ./api-ratelimiter (LDFLAGS: -s -w, вер
 make test               # юнит-тесты
 make test-cover         # отчёт coverage.html
 make lint               # golangci-lint (требует установки golangci-lint)
+
+# Integration-тесты (поднимают бинарь + miniredis + HTTP-пробы; через build-тег):
+go test -tags=integration -timeout=10m ./test/integration/...
 ```
 
 Требования: Go **1.21+**, Redis **6.0+**.

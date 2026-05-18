@@ -952,11 +952,22 @@ api-ratelimiter/
 
 
 
-## 17. Unit-тесты
+## 17. Тесты
 
-Тесты обязательны. Покрывают критическую бизнес-логику — всё что связано с подсчётом, лимитами и cleanup. Используется стандартный `testing` пакет Go.
+Тесты — обязательная часть проекта на двух уровнях: **unit** покрывает
+изолированные пакеты и логику, **integration** — поведение
+собранного бинаря end-to-end (сокеты, права доступа, реальный HTTP-стек,
+взаимодействие с Redis, graceful shutdown, веб-админка). Оба уровня
+живут в одном репозитории и запускаются `go test`; integration
+изолирован build-тегом `//go:build integration`, чтобы обычное
+`go test ./...` оставалось быстрым.
 
-### Обязательное покрытие
+### 17.1. Unit-тесты
+
+Покрывают критическую бизнес-логику — всё что связано с подсчётом,
+лимитами и cleanup. Используется стандартный `testing` пакет Go.
+
+#### Обязательное покрытие
 
 **Счётчики и rate limiting (`counter_test.go`):**
 - Инкремент `WindowCount` и `Total` на каждый запрос
@@ -1016,12 +1027,255 @@ api-ratelimiter/
 - Фильтрация `key:` / `ip:` префиксов в top-таблицах
 - Несуществующий путь → 404
 
-### Запуск тестов
+### 17.2. Integration-тесты
+
+Поднимают **собранный бинарь** в подпроцессе с управляемой
+конфигурацией, подключают его к `miniredis` (in-process Redis) и
+дёргают за публичные интерфейсы — unix-сокет `/check`, admin-порт,
+metrics-порт, healthz/readyz. Цель — поймать класс ошибок, который
+unit-тесты в принципе увидеть не могут: права на сокет, передача
+сигналов, lifecycle всего процесса, корректность HTML/CSRF при
+реальном HTTP-стеке.
+
+**Расположение:** `test/integration/`, build-тег `//go:build integration`.
+
+**Технологии:**
+
+- `os/exec` — поднятие бинаря, передача SIGTERM/SIGINT
+- `github.com/alicebob/miniredis/v2` — Redis в том же процессе (тот же
+  что в unit-тестах `store` и `admin`)
+- `net/http` + `github.com/redis/go-redis/v9` — клиенты
+- `github.com/PuerkitoBio/goquery` — DOM-парсинг ответов админки (CSRF-токены, селекторы,
+  XSS-escape). **Headless-браузер не используется** — JS в админке
+  ограничен 30 строками UX-сахара с полным server-side fallback'ом
+  (`actions_script` в `partials.html`), функциональные сценарии
+  покрываются server-side проверкой без браузера.
+
+**Запуск:**
 
 ```bash
-make test          # все тесты
-make test-verbose  # с выводом
-make test-cover    # с покрытием (генерирует coverage.html)
+go test -tags=integration -timeout=10m ./test/integration/...
+```
+
+В CI — отдельный job `integration` после `test` (см. §18).
+
+#### Обязательное покрытие
+
+##### A. Старт сервиса и валидация конфига (`startup_test.go`)
+
+- Сервис стартует с дефолтным конфигом (smoke-тест: процесс жив, сокет
+  доступен)
+- Unix-сокет создаётся по пути из `--listen=unix:/…` и имеет режим,
+  соответствующий `--socket-mode` (проверять `os.Stat` + `mode & 0777`)
+- Stale-сокет из предыдущего запуска удаляется до bind'а
+- TCP `--listen=127.0.0.1:0` — слушает на случайном порту
+- `/healthz` всегда `200`
+- `/readyz` → `200` при живом Redis, `503` при недоступном
+- `/metrics` отдаёт Prometheus-формат, содержит ожидаемые имена
+  (`ratelimit_requests_total`, `ratelimit_counters_known_active`, …)
+- Сервис стартует и обслуживает `/check` при недоступном Redis (fail-open)
+
+**Валидация флагов:** для каждого случая старт должен завершаться с
+ненулевым exit-кодом и понятным сообщением в stderr:
+
+- `--burst >= --global-limit * --abuse-multiplier`
+- `--global-limit <= 0`
+- `--burst < 0`
+- `--cleanup-interval <= 0`
+- `--abuse-ttl <= 0`
+- `--abuse-multiplier <= 0`
+- `--abuse-transfer-threshold <= 0`
+- `--log-level` не из `{debug, info, warn, error}`
+- `--log-format` не из `{json, text}`
+- `--window` не из `{second, minute}`
+- `--socket-mode > 0777` или не парсится как octal
+
+**Логирование** (`log_test.go`, минимальное покрытие):
+
+- `--log-level=info` → INFO/WARN/ERROR в stdout, DEBUG нет
+- `--log-level=debug` → DEBUG тоже есть
+- `--log-format=json` → каждая строка валидный JSON
+
+##### B. `/check` — базовое rate-limiting (`check_test.go`)
+
+- Пустой api_key + пустой X-Real-IP → `200` (fail open without key)
+- Без api_key, с X-Real-IP: `--global-limit=N` → N×200, (N+1)×403
+- Невалидный X-Real-IP (`not-an-ip`, `999.999.999.999`,
+  `1.2.3.4, 5.6.7.8`) → трактуется как пустой
+- Валидный IPv6 (`::1`, `2001:db8::1`) принимается
+- С api_key (нет в DB1) → попадает в `UnknownCounters` с префиксом
+  `key:`, лимит global
+- Префикс-неколлизия: `abc` как api_key и `abc` как IP — независимые
+  счётчики
+- Burst-зона: `--global-limit=10 --burst=5` → запросы 1–10: 200,
+  11–15: 200 (burst), 16+: 403
+- Сброс слота через окно: исчерпать лимит в T, ждать до T+1,
+  новый слот → снова 200
+- `--window=second` vs `--window=minute` — корректное определение слота
+
+**Извлечение ключа (priority chain):**
+
+- `X-Api-Key` header
+- `?api_key=` / `?token=` в URL `/check`
+- `?api_key=` / `?token=` в `X-Original-URI` (parsed server-side)
+- Приоритет: header > query > X-Original-URI
+- Внутри X-Original-URI приоритет `api_key` > `token`
+
+##### C. `/check` — DB1-управляемые лимиты (`apikey_test.go`)
+
+- Положить `rate:limit:abc { limit: 3 }` в DB1, api_key=abc → 3×200,
+  4×403
+- api_key вне DB1 → global-limit
+- Удаление ключа из DB1 в рантайме → старый `KnownCounter` живёт до
+  следующего cleanup-цикла, новые запросы создают `UnknownCounter`
+- Redis недоступен во время `/check` → api_key fallback в
+  `UnknownCounters` с global-limit
+- Корректность лейблов метрик: `blocked_individual` растёт при
+  блокировке DB1-лимитом, `blocked_global` — при блокировке global
+
+##### D. Cleanup и перенос в DB2/DB3 (`abuse_test.go`)
+
+С коротким `--cleanup-interval` (`2s` или `3s` — теперь возможно
+благодаря `time.Duration`):
+
+- Активный `UnknownCounter` с `AbuseHits >= threshold` → upsert в DB2
+  (для `key:`) или DB3 (для `ip:`), счётчик остаётся в памяти
+- Неактивный + `AbuseHits >= threshold` → upsert + удаление из памяти
+- Неактивный + `AbuseHits < threshold` → просто удаление, в Redis ничего
+- `KnownCounter` **никогда** не попадает в DB2 даже при заоблачном
+  `ViolationHits`
+- Поля upsert'а соответствуют live-состоянию: `first_seen`, `last_seen`,
+  `total_requests`, `burst_hits`, `abuse_hits`
+- TTL записи в DB2/DB3 == `--abuse-ttl`, обновляется при повторном
+  upsert (sliding)
+- Cleanup при Redis down: записи пропускаются, GC из памяти
+  продолжает работать
+- Метрика `ratelimit_cleanup_runs_total` инкрементируется на каждый
+  цикл; `cleanup_deleted_total` / `cleanup_transferred_total`
+  соответствуют действиям
+
+##### E. Метрики (`metrics_test.go`)
+
+После известной последовательности запросов значения метрик должны
+совпасть с предсказуемым результатом:
+
+- `ratelimit_requests_total{result="allowed"}` == N
+- `ratelimit_requests_total{result="blocked_individual"}` == M (после
+  блокировок по DB1-лимиту)
+- `ratelimit_requests_total{result="blocked_global"}` == K
+- Отдельной метки `result="blocked"` нет
+- `ratelimit_counters_known_active` / `unknown_active` — gauge'и с
+  живыми значениями
+- `ratelimit_memory_bytes > 0` при наличии счётчиков
+- `ratelimit_redis_errors_total` инкрементируется на ошибках
+- `ratelimit_redis_db{1,2,3}_keys` отражают состояние Redis
+- `ratelimit_check_duration_seconds` histogram имеет `sample_count > 0`
+
+##### F. Веб-админка — HTTP-уровень (`admin_http_test.go`)
+
+- `/`, `/limits`, `/abuse/keys`, `/abuse/ips` → `200`, ожидаемые
+  якоря в теле
+- `/` при Redis down: страница всё равно рендерится, баннер «redis err»
+- Предзаполнить DB1/DB2/DB3 → таблицы содержат записи
+- Поиск `?q=substring` фильтрует строки (case-sensitive)
+- Пагинация: `pageSize+1` запись → page=1 (25), page=2 (1)
+- `?topsort=total|burst|violations|abuse` меняет порядок top-25
+- CSRF: POST без токена / с неверным → `403`
+- CSRF: с правильным токеном → `303` + изменение в Redis
+- Двухступенчатый Purge: первый POST → confirm-страница, второй с
+  `confirm=yes` → `FLUSHDB`
+- Те же сценарии для `/abuse/keys/{delete,purge}` и `/abuse/ips/{delete,purge}`
+- GET на POST-эндпойнтах → `405`
+- Несуществующий URL → `404`
+
+##### G. Веб-админка — DOM-уровень через `goquery` (`admin_dom_test.go`)
+
+- На `/`: `<h1>` содержит «api-ratelimiter — status», `<nav>` имеет
+  4 ссылки на правильные пути
+- На `/limits`: форма `#action-form` имеет hidden-input
+  `csrf_token` с 64-hex-значением; кнопки Delete/Purge с правильными
+  `formaction`
+- После записи в DB1: соответствующий `<tr>` с `<code>` и значением
+  лимита присутствует
+- Поиск `?q=`: в DOM остались только подходящие строки
+- Пагинация: `← prev` / `next →` имеют корректные `href` или
+  `<span class="disabled">`
+- Sort: `?topsort=total` → колонка `total` имеет индикатор «↓»
+- CSRF-flow: GET → выкачать токен через `Find("input[name=csrf_token]")`
+  → POST с этим токеном → `303` + проверка Redis
+- HTML-escape: api_key `<script>alert(1)</script>` рендерится как
+  `&lt;script&gt;`; в DOM нет неэкранированного `<script>` тега кроме
+  легитимного `actions_script`
+- confirm-страница Purge: содержит «Permanently delete»,
+  POST-кнопки с правильными `formaction` и hidden `confirm=yes`
+
+##### H. Graceful shutdown (`shutdown_test.go`)
+
+- SIGTERM → процесс завершается за ≤ 10s
+- SIGTERM → финальный cleanup отрабатывает: предзаполнить
+  `UnknownCounter` с `AbuseHits >= threshold`, послать SIGTERM,
+  проверить что запись появилась в DB2/DB3
+- SIGTERM → `/readyz` возвращает `503` сразу
+- SIGTERM → новые коннекты на `/check` отклоняются
+  (`connection refused`)
+
+##### I. Concurrency (`concurrency_test.go`)
+
+- N=100 goroutines × M=10 запросов с одним api_key → суммарно
+  `allowed + blocked == 1000`; `allowed ≈ limit + burst` (с поправкой
+  на возможные интерливинги, проверяется с разумным запасом)
+- Параллельный admin Delete/Purge на разных endpoint'ах не валит
+  сервис (отсутствие race condition на shared state)
+
+##### J. nginx-сценарии (`nginx_compat_test.go`)
+
+Имитация того, как nginx через `auth_request` отправляет запросы:
+
+- POST на `/check` без тела (`proxy_pass_request_body off`), заголовки
+  `X-Original-URI`, `X-Real-IP` — корректно обрабатывается
+- `/check` возвращает только `200` или `403` — никогда не `4xx`/`5xx`
+  кроме этих (проверка на массиве запросов)
+- Тело ответа всегда пустое
+
+##### K. Краевые случаи / regression-armor (`edge_test.go`)
+
+Покрытие конкретных исторических багов:
+
+- Hot-path log-flood при Redis down: за N запросов в лог должно
+  прилететь **≤1** warn (regression на коммит `cb29b99` —
+  transition-only logging)
+- После восстановления Redis — `info`-лог `redis recovered`
+- Cleanup race: после `Snapshot()` приходит запрос — counter не должен
+  быть удалён (regression на `37ae7c8`)
+- 2×window inactivity: после паузы `window` запрос не пересоздаёт
+  counter; после паузы `2×window` — пересоздаёт (regression на `186db15`)
+- Пустой `X-Original-URI` (без query) — graceful fallback на X-Real-IP
+
+#### Что не покрыто на уровне integration
+
+Намеренно вне scope:
+
+- **Реальный nginx** — конфиг `configs/nginx.example.conf` не
+  проверяется через настоящий `nginx -t`; имитация на уровне
+  HTTP-запросов от Go-клиента к нашему `/check` достаточна
+- **TLS/HTTPS** — терминируется на стороне nginx
+- **`.deb` install/upgrade** — отдельный класс тестов на packaging,
+  делается через `apt install ./*.deb` в Docker, вне scope этого
+  проекта
+- **Browser-level JS** — см. обоснование в начале §17.2 (goquery вместо
+  chromedp)
+- **Multi-arch builds** — поставка только `linux/amd64`
+
+### 17.3. Запуск тестов
+
+```bash
+make test          # unit-тесты, быстро (~1-3s)
+make test-verbose  # unit с -v
+make test-cover    # unit + coverage.html
+make lint          # golangci-lint
+
+# Integration — отдельный набор, требует build-тег:
+go test -tags=integration -timeout=10m ./test/integration/...
 ```
 
 ---
