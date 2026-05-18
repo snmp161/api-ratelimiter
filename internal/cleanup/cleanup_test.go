@@ -2,6 +2,7 @@ package cleanup
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -224,6 +225,47 @@ func TestCleanup_UpsertPayloadMatchesCounter(t *testing.T) {
 	}
 	if r.AbuseHits != got.AbuseHits {
 		t.Errorf("abuse mismatch")
+	}
+}
+
+// TestCleanup_UnknownUpsertErr_ActiveKeepsCounter — Redis is healthy (so
+// transfer is attempted), but the upsert itself fails. The counter is
+// still being hit (active), so we must keep it in memory: the abuse
+// state is real, just couldn't be persisted this cycle.
+func TestCleanup_UnknownUpsertErr_ActiveKeepsCounter(t *testing.T) {
+	_, unknown, fs, cl, c := newSetup(t)
+	fs.upsertEr = errors.New("redis kaboom")
+	seedAbusiveUnknown(t, unknown, c, "ip:1.1.1.1")
+	// counter remains active at slot 1004 — don't bump c.t.
+
+	cl.Run(context.Background())
+
+	if unknown.Len() != 1 {
+		t.Fatalf("active counter must remain in memory after upsert failure, got Len=%d", unknown.Len())
+	}
+	if len(fs.abuseIP) != 0 {
+		t.Fatal("nothing should have been persisted")
+	}
+}
+
+// TestCleanup_UnknownUpsertErr_InactiveDropsCounter — same setup but
+// the counter has gone quiet (advanced clock past 2×window). We can't
+// persist, but holding the entry forever would leak memory on
+// persistent Redis failure — the spec calls for it to be dropped. Once
+// Redis recovers, the abuser will re-build state from scratch.
+func TestCleanup_UnknownUpsertErr_InactiveDropsCounter(t *testing.T) {
+	_, unknown, fs, cl, c := newSetup(t)
+	fs.upsertEr = errors.New("redis kaboom")
+	seedAbusiveUnknown(t, unknown, c, "ip:1.1.1.1")
+	c.t = time.Unix(1100, 0) // far past 2×window → inactive
+
+	cl.Run(context.Background())
+
+	if unknown.Len() != 0 {
+		t.Fatalf("inactive counter must be GC'd after upsert failure, got Len=%d", unknown.Len())
+	}
+	if len(fs.abuseIP) != 0 {
+		t.Fatal("nothing should have been persisted")
 	}
 }
 
