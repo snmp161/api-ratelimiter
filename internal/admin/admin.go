@@ -305,13 +305,33 @@ func (s *Server) topKnown(sortBy string) []knownTopRow {
 			ViolationHits: c.ViolationHits,
 		})
 	}
+	// Tiebreaker by Key keeps the order deterministic across reloads —
+	// map iteration in Snapshot() is randomised by Go, so without an
+	// explicit secondary key the operator would see the top-25 reshuffle
+	// every refresh whenever the primary metric has ties (e.g. lots of
+	// zero ViolationHits).
 	switch sortBy {
 	case "total":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].Total > rows[j].Total })
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].Total != rows[j].Total {
+				return rows[i].Total > rows[j].Total
+			}
+			return rows[i].Key < rows[j].Key
+		})
 	case "burst":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].BurstHits > rows[j].BurstHits })
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].BurstHits != rows[j].BurstHits {
+				return rows[i].BurstHits > rows[j].BurstHits
+			}
+			return rows[i].Key < rows[j].Key
+		})
 	default:
-		sort.Slice(rows, func(i, j int) bool { return rows[i].ViolationHits > rows[j].ViolationHits })
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].ViolationHits != rows[j].ViolationHits {
+				return rows[i].ViolationHits > rows[j].ViolationHits
+			}
+			return rows[i].Key < rows[j].Key
+		})
 	}
 	if len(rows) > topN {
 		rows = rows[:topN]
@@ -333,13 +353,29 @@ func (s *Server) topUnknown(prefix, sortBy string) []unknownTopRow {
 			AbuseHits: c.AbuseHits,
 		})
 	}
+	// Tiebreaker by Key (see topKnown for rationale).
 	switch sortBy {
 	case "total":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].Total > rows[j].Total })
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].Total != rows[j].Total {
+				return rows[i].Total > rows[j].Total
+			}
+			return rows[i].Key < rows[j].Key
+		})
 	case "burst":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].BurstHits > rows[j].BurstHits })
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].BurstHits != rows[j].BurstHits {
+				return rows[i].BurstHits > rows[j].BurstHits
+			}
+			return rows[i].Key < rows[j].Key
+		})
 	default:
-		sort.Slice(rows, func(i, j int) bool { return rows[i].AbuseHits > rows[j].AbuseHits })
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].AbuseHits != rows[j].AbuseHits {
+				return rows[i].AbuseHits > rows[j].AbuseHits
+			}
+			return rows[i].Key < rows[j].Key
+		})
 	}
 	if len(rows) > topN {
 		rows = rows[:topN]
@@ -512,7 +548,15 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request, cfg abuseCo
 			TTL:       e.TTL,
 		})
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].LastSeen.After(rows[j].LastSeen) })
+	// LastSeen is unix-second precision, so ties (multiple entries in the
+	// same second) are realistic for abuse tables — fall back to Key for
+	// a deterministic order on refresh.
+	sort.Slice(rows, func(i, j int) bool {
+		if !rows[i].LastSeen.Equal(rows[j].LastSeen) {
+			return rows[i].LastSeen.After(rows[j].LastSeen)
+		}
+		return rows[i].Key < rows[j].Key
+	})
 
 	total := len(rows)
 	from := (page - 1) * pageSize

@@ -314,6 +314,61 @@ func TestUnknownTopRows_FilteredByPrefix(t *testing.T) {
 	}
 }
 
+func TestTopKnown_DeterministicOrderOnTies(t *testing.T) {
+	srv, _, known, _ := newTestServer(t)
+	// All counters have ViolationHits=0 → primary sort ties for every
+	// pair. Without the Key tiebreaker, map iteration randomness would
+	// make the rendered order differ from one call to the next.
+	for _, k := range []string{"key_d", "key_a", "key_c", "key_b"} {
+		known.RecordRequest(k, 100, 0)
+	}
+
+	render := func() string {
+		r := httptest.NewRequest("GET", "/limits", nil)
+		w := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(w, r)
+		return w.Body.String()
+	}
+	first := render()
+	for i := 0; i < 5; i++ {
+		if render() != first {
+			t.Fatal("rendered output changes between calls — top-25 not deterministic")
+		}
+	}
+	// Verify the order: alphabetical by Key when violations are all 0.
+	keys := []string{"key_a", "key_b", "key_c", "key_d"}
+	last := -1
+	for _, k := range keys {
+		idx := strings.Index(first, k)
+		if idx < 0 {
+			t.Fatalf("key %q missing from rendered top-25", k)
+		}
+		if idx <= last {
+			t.Errorf("keys not in alphabetical order: %q at %d should follow earlier keys", k, idx)
+		}
+		last = idx
+	}
+}
+
+func TestTopUnknown_DeterministicOrderOnTies(t *testing.T) {
+	srv, _, _, unknown := newTestServer(t)
+	for _, k := range []string{"ip:9.9.9.9", "ip:1.1.1.1", "ip:5.5.5.5"} {
+		unknown.RecordRequest(k, 100, 0, 10)
+	}
+	render := func() string {
+		r := httptest.NewRequest("GET", "/abuse/ips", nil)
+		w := httptest.NewRecorder()
+		srv.Routes().ServeHTTP(w, r)
+		return w.Body.String()
+	}
+	first := render()
+	for i := 0; i < 5; i++ {
+		if render() != first {
+			t.Fatal("top-25 on /abuse/ips not deterministic on ties")
+		}
+	}
+}
+
 func TestNotFound(t *testing.T) {
 	srv, _, _, _ := newTestServer(t)
 	r := httptest.NewRequest("GET", "/nope", nil)
