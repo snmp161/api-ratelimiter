@@ -938,7 +938,6 @@ api-ratelimiter/
 ├── .github/workflows/
 │   ├── ci.yml                   # lint+test+build на push/PR
 │   └── release.yml              # сборка и публикация по тегу v*
-├── .gitlab-ci.yml               # аналогичный пайплайн для GitLab
 ├── Makefile
 ├── go.mod
 └── go.sum
@@ -1077,8 +1076,7 @@ install: build
 
 ### CI / CD
 
-Проект живёт в двух репозиториях — публичный GitHub и приватный self-hosted GitLab.
-Пайплайны симметричные.
+CI/CD на GitHub Actions.
 
 **Платформа:** только `linux/amd64`. Multi-arch и Docker-образ — не входят
 в текущую поставку.
@@ -1087,15 +1085,15 @@ install: build
 
 | Событие              | Что делается                                              |
 |----------------------|-----------------------------------------------------------|
-| push в любую ветку, PR / MR | `golangci-lint` → `go test -race` → `go build` (verify only) |
-| push git-тега `v*`   | то же + сборка артефактов и публикация                    |
+| push в любую ветку, PR | `golangci-lint` → `go vet` → `go test -race` с покрытием → `go build` + smoke-тест |
+| push git-тега `v*`   | то же + сборка артефактов и публикация GitHub Release     |
 
 **Артефакты публикации (по тегу `v*`):**
 
-| Артефакт                                              | Где лежит после публикации                                  |
-|-------------------------------------------------------|-------------------------------------------------------------|
-| `api-ratelimiter-vX.Y.Z-linux-amd64.tar.gz` (+ `.sha256`) | GitHub Releases · GitLab Generic Packages + Releases        |
-| `api-ratelimiter_X.Y.Z_amd64.deb`           (+ `.sha256`) | GitHub Releases · GitLab Generic Packages + Releases        |
+| Артефакт                                                 | Где лежит после публикации |
+|----------------------------------------------------------|----------------------------|
+| `api-ratelimiter-vX.Y.Z-linux-amd64.tar.gz` (+ `.sha256`) | GitHub Releases            |
+| `api-ratelimiter_X.Y.Z_amd64.deb`           (+ `.sha256`) | GitHub Releases            |
 
 `.deb` собирается через `nfpm` (`packaging/nfpm.yaml`), включает unit и
 post-/pre-install скрипты из `packaging/scripts/` (см. раздел 13).
@@ -1103,15 +1101,13 @@ post-/pre-install скрипты из `packaging/scripts/` (см. раздел 1
 **Файлы пайплайнов:**
 
 ```
-.github/workflows/ci.yml         # lint+test+build на push/PR
-.github/workflows/release.yml    # test → bin + .deb → GitHub Release
-.gitlab-ci.yml                   # lint, test, build, deb, tarball, release
+.github/workflows/ci.yml         # lint+vet+test(+coverage)+build на push/PR
+.github/workflows/release.yml    # lint+test → bin + .deb → GitHub Release
 ```
 
-GitLab пайплайн использует self-hosted runner (тег по умолчанию `docker`,
-правится в `default.tags`). Аутентификация GitHub Releases — через
-`GITHUB_TOKEN`, GitLab Generic Packages и Release-CLI — через `CI_JOB_TOKEN`,
-оба не требуют дополнительной настройки секретов.
+Аутентификация GitHub Releases — через автоматически предоставляемый
+`GITHUB_TOKEN` (release-job декларирует `permissions: contents: write`),
+дополнительной настройки секретов не требуется.
 
 ---
 

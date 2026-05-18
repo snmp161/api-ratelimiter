@@ -188,8 +188,7 @@ api-ratelimiter/
 ├── configs/                     # sample nginx/Angie config + systemd unit
 ├── packaging/                   # nfpm.yaml + .deb install scripts
 ├── docs/specification.md        # full specification (Russian)
-├── .github/workflows/           # CI / release pipelines (GitHub)
-├── .gitlab-ci.yml               # CI / release pipeline (GitLab)
+├── .github/workflows/           # CI / release pipelines
 └── Makefile
 ```
 
