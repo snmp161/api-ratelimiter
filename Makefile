@@ -2,7 +2,7 @@ BINARY   = api-ratelimiter
 VERSION  = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  = -ldflags "-X main.Version=$(VERSION) -s -w"
 
-.PHONY: build run test test-verbose test-cover clean install lint
+.PHONY: build run test test-verbose test-cover test-integration clean install lint
 
 build:
 	go build $(LDFLAGS) -o $(BINARY) ./cmd/api-ratelimiter
@@ -28,6 +28,9 @@ test-verbose:
 test-cover:
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
+
+test-integration:
+	go test -tags=integration -timeout=10m ./test/integration/...
 
 lint:
 	golangci-lint run ./...

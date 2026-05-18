@@ -1289,7 +1289,7 @@ BINARY   = api-ratelimiter
 VERSION  = $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS  = -ldflags "-X main.Version=$(VERSION) -s -w"
 
-.PHONY: build run test test-verbose test-cover clean install lint
+.PHONY: build run test test-verbose test-cover test-integration clean install lint
 
 build:
 	go build $(LDFLAGS) -o $(BINARY) ./cmd/api-ratelimiter
@@ -1316,6 +1316,9 @@ test-cover:
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
+test-integration:
+	go test -tags=integration -timeout=10m ./test/integration/...
+
 lint:
 	golangci-lint run ./...
 
@@ -1339,7 +1342,7 @@ CI/CD на GitHub Actions.
 
 | Событие              | Что делается                                              |
 |----------------------|-----------------------------------------------------------|
-| push в любую ветку, PR | `golangci-lint` → `go vet` → `go test -race` с покрытием → `go build` + smoke-тест |
+| push в любую ветку, PR | `golangci-lint` → `go vet` → `go test -race` с покрытием → `go build` + smoke-тест → **`integration`** (см. §17.2; запускается после успешного unit-уровня) |
 | push git-тега `v*`   | то же + сборка артефактов и публикация GitHub Release     |
 
 **Артефакты публикации (по тегу `v*`):**
@@ -1355,9 +1358,14 @@ post-/pre-install скрипты из `packaging/scripts/` (см. раздел 1
 **Файлы пайплайнов:**
 
 ```
-.github/workflows/ci.yml         # lint+vet+test(+coverage)+build на push/PR
+.github/workflows/ci.yml         # lint+vet+test(+coverage)+build+integration на push/PR
 .github/workflows/release.yml    # lint+test → bin + .deb → GitHub Release
 ```
+
+В `ci.yml` job `integration` объявляет `needs: [test]` — запускается
+параллельно с `build`, но только если `test` уже зелёный. Это
+исключает запуск дорогих integration-тестов на коде, который и
+unit-уровень не проходит.
 
 Аутентификация GitHub Releases — через автоматически предоставляемый
 `GITHUB_TOKEN` (release-job декларирует `permissions: contents: write`),
