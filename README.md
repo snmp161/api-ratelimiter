@@ -158,7 +158,7 @@ Counter values are cumulative since process start. Use Prometheus
 
 The systemd unit and a sample nginx/Angie config are described in sections 12
 and 13 of `docs/specification.md`. A ready-to-use nginx/Angie config lives in
-[`configs/angie.conf`](configs/angie.conf). The `.deb` package
+[`configs/nginx.example.conf`](configs/nginx.example.conf). The `.deb` package
 (`packaging/`) installs the systemd unit to
 `/lib/systemd/system/ratelimiter.service` and the binary to
 `/usr/bin/ratelimiter`. For ad-hoc installs from source:

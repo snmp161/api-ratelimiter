@@ -159,7 +159,7 @@ Counter-значения — кумулятивные с момента стар
 ## Деплой
 
 systemd-unit и пример конфига nginx/Angie — в разделах 12, 13 `docs/specification.md`.
-Готовый к использованию конфиг nginx/Angie лежит в [`configs/angie.conf`](configs/angie.conf).
+Готовый к использованию конфиг nginx/Angie лежит в [`configs/nginx.example.conf`](configs/nginx.example.conf).
 Бинарь устанавливается:
 
 ```bash
