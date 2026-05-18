@@ -241,6 +241,97 @@ func TestAbuseKeys_AndIPs_RenderOK(t *testing.T) {
 	}
 }
 
+func TestAbuseIPs_DeleteWithCSRF(t *testing.T) {
+	srv, mr, _, _ := newTestServer(t)
+	rec := store.AbuseRecord{TotalRequests: 5}
+	if err := srv.store.UpsertAbuseIP(context.Background(), "1.1.1.1", rec, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"csrf_token": {srv.csrfToken}, "keys": {"1.1.1.1"}}
+	r := httptest.NewRequest("POST", "/abuse/ips/delete", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d want 303", w.Code)
+	}
+	mr.Select(store.DBAbuseIP)
+	if mr.Exists("rate:abuse:ip:1.1.1.1") {
+		t.Fatal("1.1.1.1 must be deleted")
+	}
+}
+
+func TestAbuseIPs_PurgeConfirmFlow(t *testing.T) {
+	srv, mr, _, _ := newTestServer(t)
+	if err := srv.store.UpsertAbuseIP(context.Background(), "1.1.1.1", store.AbuseRecord{}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	// First POST without confirm → confirm page.
+	form := url.Values{"csrf_token": {srv.csrfToken}}
+	r := httptest.NewRequest("POST", "/abuse/ips/purge", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "redisDB3") {
+		t.Fatalf("confirm page expected for /abuse/ips/purge")
+	}
+	// Second POST with confirm=yes → FLUSHDB.
+	form = url.Values{"csrf_token": {srv.csrfToken}, "confirm": {"yes"}}
+	r = httptest.NewRequest("POST", "/abuse/ips/purge", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	srv.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d want 303", w.Code)
+	}
+	if len(mr.DB(store.DBAbuseIP).Keys()) != 0 {
+		t.Fatal("DBAbuseIP must be empty after purge")
+	}
+}
+
+func TestAbuseKeys_PurgeConfirmFlow(t *testing.T) {
+	srv, mr, _, _ := newTestServer(t)
+	if err := srv.store.UpsertAbuseKey(context.Background(), "k1", store.AbuseRecord{}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"csrf_token": {srv.csrfToken}, "confirm": {"yes"}}
+	r := httptest.NewRequest("POST", "/abuse/keys/purge", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d want 303", w.Code)
+	}
+	if len(mr.DB(store.DBAbuseKey).Keys()) != 0 {
+		t.Fatal("DBAbuseKey must be empty after purge")
+	}
+}
+
+func TestTopSort_AllBranchesCovered(t *testing.T) {
+	srv, mr, known, unknown := newTestServer(t)
+	// Populate something on each page so the top-25 templates have rows.
+	mr.Select(store.DBLimits)
+	mr.HSet("rate:limit:a", "limit", "10", "created_at", "0")
+	known.RecordRequest("a", 10, 0)
+	unknown.RecordRequest("key:b", 10, 0, 10)
+	unknown.RecordRequest("ip:1.2.3.4", 10, 0, 10)
+
+	// Three pages × four topsort values (including "invalid" → default).
+	pages := []string{"/limits", "/abuse/keys", "/abuse/ips"}
+	sorts := []string{"total", "burst", "violations", "abuse", "garbage"}
+	for _, p := range pages {
+		for _, s := range sorts {
+			code, body := renderGet(t, srv, p+"?topsort="+s)
+			if code != http.StatusOK {
+				t.Errorf("%s?topsort=%s: status=%d", p, s, code)
+			}
+			if !strings.HasSuffix(strings.TrimSpace(body), "</html>") {
+				t.Errorf("%s?topsort=%s: body truncated", p, s)
+			}
+		}
+	}
+}
+
 func TestAbuseKeys_DeleteWithCSRF(t *testing.T) {
 	srv, mr, _, _ := newTestServer(t)
 	rec := store.AbuseRecord{TotalRequests: 10}

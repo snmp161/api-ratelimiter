@@ -217,6 +217,37 @@ func TestUnknown_NamespaceKeysDoNotCollide(t *testing.T) {
 	}
 }
 
+func TestUnknown_Delete_RemovesEntry(t *testing.T) {
+	m := NewUnknownMap(1, nil)
+	m.RecordRequest("ip:1.1.1.1", 10, 0, 10)
+	m.RecordRequest("key:abc", 10, 0, 10)
+	if m.Len() != 2 {
+		t.Fatalf("setup: expected 2 entries, got %d", m.Len())
+	}
+	m.Delete("ip:1.1.1.1")
+	if m.Len() != 1 {
+		t.Fatalf("after Delete: expected 1 entry, got %d", m.Len())
+	}
+	if _, ok := m.Get("ip:1.1.1.1"); ok {
+		t.Fatal("deleted entry still readable via Get")
+	}
+	// Deleting a missing key is a no-op (doesn't panic).
+	m.Delete("nonexistent")
+	if m.Len() != 1 {
+		t.Fatalf("Delete of missing key altered Len: got %d", m.Len())
+	}
+}
+
+func TestKnown_Delete_RemovesEntry(t *testing.T) {
+	m := NewKnownMap(1, nil)
+	m.RecordRequest("k1", 10, 0)
+	m.RecordRequest("k2", 10, 0)
+	m.Delete("k1")
+	if m.Len() != 1 {
+		t.Fatalf("after Delete: expected 1 entry, got %d", m.Len())
+	}
+}
+
 func TestKnown_SizeBytes_AccountsForStructAndKey(t *testing.T) {
 	m := NewKnownMap(1, nil)
 	if m.SizeBytes() != 0 {
