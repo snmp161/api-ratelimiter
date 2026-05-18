@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"ratelimiter/internal/counter"
 	"ratelimiter/internal/metrics"
 	"ratelimiter/internal/store"
@@ -136,6 +138,32 @@ func TestCleanup_KnownDroppedWhenLimitVanished(t *testing.T) {
 	cl.Run(context.Background())
 	if known.Len() != 0 {
 		t.Fatal("KnownCounter must be deleted when key vanished from redisDB1")
+	}
+}
+
+// TestCleanup_Run_DBSizeError_IncrementsRedisErrors — DBSize is called
+// at the end of Run to refresh the per-DB key-count gauges. If it
+// errors, the cleanup cycle must complete normally (no panic, all the
+// counter bookkeeping done) but increment ratelimit_redis_errors_total
+// so observability picks it up.
+func TestCleanup_Run_DBSizeError_IncrementsRedisErrors(t *testing.T) {
+	known, _, fs, cl, _ := newSetup(t)
+	fs.dbErr = errors.New("DBSIZE went sideways")
+
+	// Seed something so the cleanup body has work to do — proves the
+	// DBSize error doesn't short-circuit the rest of Run().
+	fs.exists["k1"] = true
+	known.RecordRequest("k1", 10, 0)
+
+	beforeErr := testutil.ToFloat64(cl.metrics.RedisErrorsTotal)
+	cl.Run(context.Background())
+	afterErr := testutil.ToFloat64(cl.metrics.RedisErrorsTotal)
+
+	if afterErr <= beforeErr {
+		t.Fatalf("RedisErrorsTotal not incremented: before=%v after=%v", beforeErr, afterErr)
+	}
+	if known.Len() != 1 {
+		t.Fatal("counter should still be there — DBSize failure must not abort Run")
 	}
 }
 
