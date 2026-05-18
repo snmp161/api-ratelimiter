@@ -139,6 +139,28 @@ func TestCleanup_KnownDroppedWhenLimitVanished(t *testing.T) {
 	}
 }
 
+// TestCleanup_RunKnown_LimitExistsError_CountersUntouched — when the
+// existence check fails for an api_key, runKnown can't know whether to
+// drop the counter (key vanished from redisDB1) or keep it (transient
+// Redis issue). The safe choice is to skip it this cycle and try again
+// next time. This test arms fakeStore.limitExistsEr and verifies the
+// counter is neither deleted nor counted as transferred.
+func TestCleanup_RunKnown_LimitExistsError_CountersUntouched(t *testing.T) {
+	known, _, fs, cl, _ := newSetup(t)
+	fs.limitExistsEr = errors.New("redis kaboom")
+	known.RecordRequest("k1", 10, 0)
+	known.RecordRequest("k2", 10, 0)
+
+	cl.Run(context.Background())
+
+	if known.Len() != 2 {
+		t.Fatalf("counters must remain when LimitExists errored, got Len=%d", known.Len())
+	}
+	if len(fs.abuseK) != 0 {
+		t.Fatal("KnownCounters must never appear in redisDB2")
+	}
+}
+
 func TestCleanup_KnownActiveKept(t *testing.T) {
 	known, _, fs, cl, _ := newSetup(t)
 	fs.exists["k1"] = true
