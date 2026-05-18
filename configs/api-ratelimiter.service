@@ -17,8 +17,8 @@ ExecStart=/usr/bin/api-ratelimiter \
     --global-limit 100 \
     --burst 20 \
     --window second \
-    --cleanup-interval 15 \
-    --abuse-ttl 15 \
+    --cleanup-interval 15m \
+    --abuse-ttl 15m \
     --abuse-multiplier 10 \
     --abuse-transfer-threshold 3
 RuntimeDirectory=api-ratelimiter

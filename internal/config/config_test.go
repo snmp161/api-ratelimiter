@@ -2,7 +2,10 @@
 
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestValidate_BurstExceedsAbuseThreshold(t *testing.T) {
 	c := Default()
@@ -63,6 +66,60 @@ func TestValidate_NegativeBurst(t *testing.T) {
 	c.Burst = -1
 	if err := c.Validate(); err == nil {
 		t.Fatal("expected error for negative burst")
+	}
+}
+
+func TestValidate_NonPositiveCleanupInterval(t *testing.T) {
+	for _, d := range []time.Duration{0, -time.Second} {
+		c := Default()
+		c.CleanupInterval = d
+		if err := c.Validate(); err == nil {
+			t.Errorf("cleanup-interval=%v: expected validation error", d)
+		}
+	}
+}
+
+func TestValidate_NonPositiveAbuseTTL(t *testing.T) {
+	for _, d := range []time.Duration{0, -time.Second} {
+		c := Default()
+		c.AbuseTTL = d
+		if err := c.Validate(); err == nil {
+			t.Errorf("abuse-ttl=%v: expected validation error", d)
+		}
+	}
+}
+
+func TestValidate_NonPositiveAbuseMultiplier(t *testing.T) {
+	c := Default()
+	c.AbuseMultiplier = 0
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected error for abuse-multiplier=0")
+	}
+}
+
+func TestValidate_NonPositiveAbuseTransferThreshold(t *testing.T) {
+	c := Default()
+	c.AbuseTransferThreshold = 0
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected error for abuse-transfer-threshold=0")
+	}
+}
+
+func TestValidate_InvalidLogFormat(t *testing.T) {
+	c := Default()
+	c.LogFormat = "xml"
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected error for invalid log-format")
+	}
+}
+
+func TestDefault_DurationFields(t *testing.T) {
+	c := Default()
+	if c.CleanupInterval != 15*time.Minute {
+		t.Errorf("CleanupInterval default = %v, want 15m", c.CleanupInterval)
+	}
+	if c.AbuseTTL != 15*time.Minute {
+		t.Errorf("AbuseTTL default = %v, want 15m", c.AbuseTTL)
 	}
 }
 

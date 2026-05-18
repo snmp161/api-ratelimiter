@@ -63,8 +63,8 @@ func run() error {
 		"global_limit", cfg.GlobalLimit,
 		"burst", cfg.Burst,
 		"window", cfg.Window,
-		"cleanup_interval_min", cfg.CleanupInterval,
-		"abuse_ttl_min", cfg.AbuseTTL,
+		"cleanup_interval", cfg.CleanupInterval,
+		"abuse_ttl", cfg.AbuseTTL,
 		"abuse_multiplier", cfg.AbuseMultiplier,
 		"abuse_transfer_threshold", cfg.AbuseTransferThreshold,
 	)
@@ -82,7 +82,7 @@ func run() error {
 	checkH := handler.NewCheck(lim, m, logger)
 
 	cl := cleanup.New(known, unknown, rdb, m, logger,
-		int64(cfg.AbuseTransferThreshold), cfg.AbuseTTLDuration())
+		int64(cfg.AbuseTransferThreshold), cfg.AbuseTTL)
 
 	startedAt := time.Now()
 	adminSrv, err := admin.New(cfg, known, unknown, rdb, m, logger, startedAt, Version)
@@ -179,7 +179,7 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		cl.Loop(rootCtx, cfg.CleanupDuration())
+		cl.Loop(rootCtx, cfg.CleanupInterval)
 	}()
 
 	// Initial DB key gauges + a background ticker so they don't go stale

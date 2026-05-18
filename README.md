@@ -72,8 +72,8 @@ All flags use the `--flag value` form (`pflag`).
 | `--global-limit`       | `100`                      | Per-window limit for keys not in redisDB1 and IP-based       |
 | `--burst`              | `0`                        | Extra requests above the limit per slot                      |
 | `--window`             | `second`                   | Window unit: `second` or `minute`                            |
-| `--cleanup-interval`   | `15`                       | Cleanup cycle period, in minutes                             |
-| `--abuse-ttl`          | `15`                       | TTL for redisDB2/redisDB3 entries, in minutes                |
+| `--cleanup-interval`   | `15m`                      | Cleanup cycle period (Go duration: `30s`, `1m`, `2h`)        |
+| `--abuse-ttl`          | `15m`                      | TTL for redisDB2/redisDB3 entries (Go duration)              |
 | `--abuse-multiplier`   | `10`                       | `AbuseHits` threshold = `global_limit * multiplier`          |
 | `--abuse-transfer-threshold` | `3`                  | Minimum `AbuseHits` to transfer counter to Redis             |
 | `--socket-mode`        | `0666`                     | File mode for unix socket from `--listen` (octal). TCP-ignored |

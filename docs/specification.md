@@ -173,7 +173,7 @@ type UnknownCounter struct {
 
 ## 5. Цикл cleanup
 
-Запускается раз в `--cleanup-interval` минут. Перед началом цикла проверяет `store.IsHealthy()` — если Redis на текущий момент известен как недоступный, **upsert'ы в redisDB2/redisDB3 пропускаются полностью** (счётчики остаются в памяти до восстановления Redis или до их естественной деактивации). GC inactive-счётчиков из памяти продолжает работать независимо от состояния Redis. Обрабатывает обе map независимо. Счётчик считается **неактивным** если выполнены **оба условия**:
+Запускается раз в `--cleanup-interval`. Перед началом цикла проверяет `store.IsHealthy()` — если Redis на текущий момент известен как недоступный, **upsert'ы в redisDB2/redisDB3 пропускаются полностью** (счётчики остаются в памяти до восстановления Redis или до их естественной деактивации). GC inactive-счётчиков из памяти продолжает работать независимо от состояния Redis. Обрабатывает обе map независимо. Счётчик считается **неактивным** если выполнены **оба условия**:
 1. Текущий слот отличается от слота счётчика (в текущем окне запросов не было).
 2. С момента `LastRequest` прошло **не менее двух окон** (`2 × --window`).
 
@@ -196,7 +196,7 @@ type UnknownCounter struct {
 
 Никакого переноса в redisDB2 — redisDB1-ключи не являются кандидатами в нарушители.
 
-**Поведение при удалении ключа из redisDB1:** после удаления новые запросы этого api_key создают счётчик в `UnknownCounters`. Старый `KnownCounter` остаётся в памяти до следующего цикла cleanup (максимум `--cleanup-interval` минут), после чего удаляется. Двойное существование счётчиков в этот период не влияет на корректность rate limiting — решения принимаются по актуальному счётчику для каждого запроса.
+**Поведение при удалении ключа из redisDB1:** после удаления новые запросы этого api_key создают счётчик в `UnknownCounters`. Старый `KnownCounter` остаётся в памяти до следующего цикла cleanup (максимум `--cleanup-interval`), после чего удаляется. Двойное существование счётчиков в этот период не влияет на корректность rate limiting — решения принимаются по актуальному счётчику для каждого запроса.
 
 ### UnknownCounters — чистка с переносом в redisDB2/redisDB3
 
@@ -220,7 +220,7 @@ type UnknownCounter struct {
 - `total_requests` ← `UnknownCounter.Total`
 - `burst_hits`     ← `UnknownCounter.BurstHits`
 - `abuse_hits`     ← `UnknownCounter.AbuseHits`
-- TTL              ← скользящий `--abuse-ttl` минут (обновляется при каждом upsert)
+- TTL              ← скользящий `--abuse-ttl` (обновляется при каждом upsert)
 
 ---
 
@@ -277,7 +277,7 @@ HSET rate:limit:abc123 created_at 1717000000 limit 500
         total_requests  — суммарно запросов (UnknownCounter.Total)
         burst_hits      — суммарно запросов через burst (UnknownCounter.BurstHits)
         abuse_hits      — окон с превышением порога (UnknownCounter.AbuseHits)
-TTL:    --abuse-ttl минут, обновляется при каждом upsert из cleanup
+TTL:    --abuse-ttl, обновляется при каждом upsert из cleanup
 ```
 
 ### redisDB3 (SELECT 3) — нарушители по IP
@@ -290,7 +290,7 @@ TTL:    --abuse-ttl минут, обновляется при каждом upser
         total_requests  — суммарно запросов
         burst_hits      — суммарно запросов через burst (UnknownCounter.BurstHits)
         abuse_hits      — окон с превышением порога
-TTL:    --abuse-ttl минут, обновляется при каждом upsert из cleanup
+TTL:    --abuse-ttl, обновляется при каждом upsert из cleanup
 ```
 
 ---
@@ -312,8 +312,8 @@ TTL:    --abuse-ttl минут, обновляется при каждом upser
 | `--global-limit`       | int    | `100`                      | Глобальный лимит запросов в окне                                |
 | `--burst`              | int    | `0`                        | Дополнительные запросы сверх лимита (burst)                     |
 | `--window`             | string | `second`                   | Единица окна: `second` или `minute`                             |
-| `--cleanup-interval`   | int    | `15`                       | Интервал цикла cleanup, в минутах                               |
-| `--abuse-ttl`          | int    | `15`                       | TTL записей в redisDB2/redisDB3, в минутах                                |
+| `--cleanup-interval`   | duration | `15m`                    | Интервал цикла cleanup (Go duration: `30s`, `1m`, `2h`)         |
+| `--abuse-ttl`          | duration | `15m`                    | TTL записей в redisDB2/redisDB3 (Go duration)                   |
 | `--abuse-multiplier`   | int    | `10`                       | Множитель global-limit для счёта AbuseHits                      |
 | `--abuse-transfer-threshold` | int    | `3`                        | Минимальный AbuseHits для переноса счётчика в redisDB2/redisDB3           |
 
@@ -344,8 +344,8 @@ api-ratelimiter \
   --global-limit 100 \
   --burst 20 \
   --window second \
-  --cleanup-interval 15 \
-  --abuse-ttl 15 \
+  --cleanup-interval 15m \
+  --abuse-ttl 15m \
   --abuse-multiplier 10 \
   --abuse-transfer-threshold 3
 
@@ -790,8 +790,8 @@ ExecStart=/usr/bin/api-ratelimiter \
     --global-limit 100 \
     --burst 20 \
     --window second \
-    --cleanup-interval 15 \
-    --abuse-ttl 15 \
+    --cleanup-interval 15m \
+    --abuse-ttl 15m \
     --abuse-multiplier 10 \
     --abuse-transfer-threshold 3
 RuntimeDirectory=api-ratelimiter

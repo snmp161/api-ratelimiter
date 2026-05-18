@@ -209,8 +209,8 @@ func (s *Server) flagRows() []flagRow {
 		{"--global-limit", strconv.Itoa(c.GlobalLimit)},
 		{"--burst", strconv.Itoa(c.Burst)},
 		{"--window", c.Window},
-		{"--cleanup-interval", strconv.Itoa(c.CleanupInterval) + "m"},
-		{"--abuse-ttl", strconv.Itoa(c.AbuseTTL) + "m"},
+		{"--cleanup-interval", c.CleanupInterval.String()},
+		{"--abuse-ttl", c.AbuseTTL.String()},
 		{"--abuse-multiplier", strconv.Itoa(c.AbuseMultiplier)},
 		{"--abuse-transfer-threshold", strconv.Itoa(c.AbuseTransferThreshold)},
 	}

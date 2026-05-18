@@ -74,8 +74,8 @@ make run
 | `--global-limit`       | `100`                      | Лимит запросов в окне (для ключей не из redisDB1 и по IP) |
 | `--burst`              | `0`                        | Доп. запросы сверх лимита в одном слоте                   |
 | `--window`             | `second`                   | Единица окна: `second` или `minute`                       |
-| `--cleanup-interval`   | `15`                       | Интервал cleanup, минуты                                  |
-| `--abuse-ttl`          | `15`                       | TTL записей в redisDB2/redisDB3, минуты                   |
+| `--cleanup-interval`   | `15m`                      | Интервал cleanup (Go duration: `30s`, `1m`, `2h`)         |
+| `--abuse-ttl`          | `15m`                      | TTL записей в redisDB2/redisDB3 (Go duration)             |
 | `--abuse-multiplier`   | `10`                       | Порог `AbuseHits` = `global_limit * multiplier`           |
 | `--abuse-transfer-threshold` | `3`                  | Минимум `AbuseHits` для переноса в Redis                  |
 | `--socket-mode`        | `0666`                     | Права на unix-сокет из `--listen` (octal). Для TCP игнорируется |

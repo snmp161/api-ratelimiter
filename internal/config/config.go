@@ -24,8 +24,8 @@ type Config struct {
 	GlobalLimit            int
 	Burst                  int
 	Window                 string
-	CleanupInterval        int
-	AbuseTTL               int
+	CleanupInterval        time.Duration
+	AbuseTTL               time.Duration
 	AbuseMultiplier        int
 	AbuseTransferThreshold int
 }
@@ -43,8 +43,8 @@ func Default() *Config {
 		GlobalLimit:            100,
 		Burst:                  0,
 		Window:                 "second",
-		CleanupInterval:        15,
-		AbuseTTL:               15,
+		CleanupInterval:        15 * time.Minute,
+		AbuseTTL:               15 * time.Minute,
 		AbuseMultiplier:        10,
 		AbuseTransferThreshold: 3,
 	}
@@ -62,8 +62,8 @@ func (c *Config) BindFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&c.GlobalLimit, "global-limit", c.GlobalLimit, "Global request limit per window")
 	fs.IntVar(&c.Burst, "burst", c.Burst, "Extra requests over the limit (burst)")
 	fs.StringVar(&c.Window, "window", c.Window, "Window unit: second or minute")
-	fs.IntVar(&c.CleanupInterval, "cleanup-interval", c.CleanupInterval, "Cleanup interval in minutes")
-	fs.IntVar(&c.AbuseTTL, "abuse-ttl", c.AbuseTTL, "TTL for redisDB2/redisDB3 entries, in minutes")
+	fs.DurationVar(&c.CleanupInterval, "cleanup-interval", c.CleanupInterval, "Cleanup interval (Go duration: 30s, 1m, 2h)")
+	fs.DurationVar(&c.AbuseTTL, "abuse-ttl", c.AbuseTTL, "TTL for redisDB2/redisDB3 entries (Go duration)")
 	fs.IntVar(&c.AbuseMultiplier, "abuse-multiplier", c.AbuseMultiplier, "Multiplier of global-limit for AbuseHits counting")
 	fs.IntVar(&c.AbuseTransferThreshold, "abuse-transfer-threshold", c.AbuseTransferThreshold, "Min AbuseHits to transfer counter to redisDB2/redisDB3")
 }
@@ -94,10 +94,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("burst must be >= 0, got %d", c.Burst)
 	}
 	if c.CleanupInterval <= 0 {
-		return fmt.Errorf("cleanup-interval must be > 0, got %d", c.CleanupInterval)
+		return fmt.Errorf("cleanup-interval must be > 0, got %v", c.CleanupInterval)
 	}
 	if c.AbuseTTL <= 0 {
-		return fmt.Errorf("abuse-ttl must be > 0, got %d", c.AbuseTTL)
+		return fmt.Errorf("abuse-ttl must be > 0, got %v", c.AbuseTTL)
 	}
 	if c.AbuseMultiplier <= 0 {
 		return fmt.Errorf("abuse-multiplier must be > 0, got %d", c.AbuseMultiplier)
@@ -145,10 +145,3 @@ func (c *Config) WindowSeconds() int64 {
 	return 1
 }
 
-func (c *Config) CleanupDuration() time.Duration {
-	return time.Duration(c.CleanupInterval) * time.Minute
-}
-
-func (c *Config) AbuseTTLDuration() time.Duration {
-	return time.Duration(c.AbuseTTL) * time.Minute
-}
