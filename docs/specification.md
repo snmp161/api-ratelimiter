@@ -627,17 +627,67 @@ nginx#761, унаследовано в Angie), поэтому map по `$arg_api
 строки и приоритет `api_key` > `token` — на стороне ratelimiter (см.
 раздел 9).
 
+### Отключение rate limiting (планово или per-request)
+
+Поддерживаются два сценария «трафик идёт мимо лимитера»:
+
+1. **Сервис остановлен / упал** (`systemctl stop ratelimiter`, рестарт, краш).
+   В `upstream ratelimiter` рядом с реальным бэкендом прописан `backup`-сервер
+   — это in-nginx-затычка, всегда отвечающая `200` на `/check`. При
+   `max_fails=1 fail_timeout=2s` nginx за один неудачный коннект помечает
+   primary как failed и шлёт subrequest'ы на backup. По возвращению сервиса
+   primary восстанавливается автоматически. Reload nginx **не нужен**.
+
+2. **Per-request exemption** (внутренний мониторинг, allow-list ключей/IP,
+   служебный трафик). Через `map $ratelimit_upstream` оператор маршрутизирует
+   выбранные запросы на отдельный upstream `ratelimiter_bypass`, который
+   состоит **только** из затычки — лимитер вообще не дёргается. Дефолт — все
+   запросы идут на `ratelimiter` (с обычным failover'ом).
+
+Затычка — отдельный `server { listen unix:... return 200; }` в том же nginx,
+не отдельный процесс.
+
 ### Server block
 
 ```nginx
+# Variable in proxy_pass below requires a resolver declaration. Lookups
+# always hit upstream{} blocks; DNS никогда не выполняется.
+resolver 127.0.0.1 valid=300s ipv6=off;
+
 upstream php_api {
     server 127.0.0.1:9000;  # уточнить при деплое
     keepalive 32;
 }
 
+# Real + backup stub. На стоп systemd-юнита nginx за один failed-connect
+# переключается на backup.
 upstream ratelimiter {
-    server unix:/run/ratelimiter/ratelimit.sock;
+    server unix:/run/ratelimiter/ratelimit.sock max_fails=1 fail_timeout=2s;
+    server unix:/run/ratelimiter-stub.sock backup;
     keepalive 32;
+}
+
+# Только затычка. Выбирается через $ratelimit_upstream для exempt-трафика.
+upstream ratelimiter_bypass {
+    server unix:/run/ratelimiter-stub.sock;
+    keepalive 8;
+}
+
+# In-nginx stub.
+server {
+    listen unix:/run/ratelimiter-stub.sock;
+    access_log /var/log/nginx/ratelimit-bypass.log;
+    location / { return 200; }
+}
+
+# Switch — default ratelimiter, "ratelimiter_bypass" для exempt-условий.
+# Шаблон — оператор подставляет реальные условия:
+#   map $arg_api_key $ratelimit_upstream {
+#       default            ratelimiter;
+#       "internal-monitor" ratelimiter_bypass;
+#   }
+map $request_uri $ratelimit_upstream {
+    default ratelimiter;
 }
 
 server {
@@ -646,13 +696,15 @@ server {
 
     location = /_ratelimit {
         internal;
-        proxy_pass              http://ratelimiter/check;
-        proxy_pass_request_body off;
-        proxy_set_header        Content-Length    "";
-        proxy_set_header        X-Original-URI    $request_uri;
-        proxy_set_header        X-Real-IP         $remote_addr;
-        proxy_connect_timeout   100ms;
-        proxy_read_timeout      200ms;
+        proxy_pass                http://$ratelimit_upstream/check;
+        proxy_next_upstream       error timeout;
+        proxy_next_upstream_tries 2;
+        proxy_pass_request_body   off;
+        proxy_set_header          Content-Length    "";
+        proxy_set_header          X-Original-URI    $request_uri;
+        proxy_set_header          X-Real-IP         $remote_addr;
+        proxy_connect_timeout     100ms;
+        proxy_read_timeout        200ms;
     }
 
     # ── Лимитируемые эндпойнты ─────────────────────────────────────────
