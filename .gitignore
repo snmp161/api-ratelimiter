@@ -1,0 +1,12 @@
+# Build output
+/api-ratelimiter
+/dist/
+
+# Coverage
+coverage.out
+coverage.html
+coverage-func.txt
+
+# Editor / OS noise
+*.swp
+.DS_Store

@@ -52,7 +52,8 @@ docs/specification.md             — full spec (Russian)
 make build       # ./api-ratelimiter
 make test        # go test ./...
 make test-cover  # coverage.html
-make lint        # golangci-lint run ./...
+make lint        # golangci-lint run ./... (set pinned in .golangci.yml)
+make dist VERSION=v1.2.3   # tarball + .deb + sha256, same as release.yml
 ```
 
 CI runs the same with `-race`, `-coverpkg=./...`, and golangci-lint
@@ -169,6 +170,23 @@ test). Plan and known deviations: spec §17.2.
   queues (never cancels — partial releases would leak artifacts).
 - Smoke test accepts pflag's exit codes 0 *and* 2 (`--help` exits 2);
   anything else fails the job.
+
+## Maintenance stance: the project is frozen
+
+Feature-complete per the spec; the user does not plan routine upkeep.
+Consequences for anything you do here:
+
+- **Don't "modernise".** No dependency bumps, no Go-version bumps, no
+  action-version bumps unless something is actually broken and the user
+  asked. The pins in `go.mod`/`go.sum` and the workflows are deliberate.
+- **The local build is authoritative.** `go build` + `go test` +
+  `make dist` reproduce everything CI does. GitHub Actions will rot
+  first (pinned actions get deprecated; golangci-lint v1.59 is tied to
+  its Go release) — that is expected and must never block a release.
+  `lint` is `continue-on-error` in `release.yml` and not in its `needs`.
+- Rationale and the "how to build this in 2030" checklist live in the
+  **Building without CI** section of both READMEs — keep them in sync
+  if the build changes.
 
 ## When to ask the user before acting
 

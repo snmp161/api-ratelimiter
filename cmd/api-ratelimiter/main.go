@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,7 +45,18 @@ func main() {
 func run() error {
 	cfg := config.Default()
 	cfg.BindFlags(pflag.CommandLine)
+	// --version is handled here rather than in config: it is not a
+	// service parameter, it short-circuits startup. Prints the Go
+	// toolchain and platform too — on a long-lived install that is
+	// usually the next question after "which version is this?".
+	showVersion := pflag.Bool("version", false, "Print version and exit")
 	pflag.Parse()
+
+	if *showVersion {
+		fmt.Printf("api-ratelimiter %s (%s, %s/%s)\n",
+			Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		return nil
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("config: %w", err)

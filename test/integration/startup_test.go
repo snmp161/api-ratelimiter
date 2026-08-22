@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,6 +36,33 @@ func TestStartup_SocketMode(t *testing.T) {
 				t.Errorf("socket mode = %#o, want %#o (--socket-mode=%s)", got, want, mode)
 			}
 		})
+	}
+}
+
+// TestStartup_VersionFlag — `--version` prints the build version and
+// exits 0 without touching Redis, sockets or ports. The one thing you
+// want to be able to ask a binary you found on a server years later.
+func TestStartup_VersionFlag(t *testing.T) {
+	s := spawnService(t, expectExit(), withFlag("--version", "true"))
+
+	if code := s.exitCode(); code != 0 {
+		t.Errorf("--version exit code = %d, want 0\nstderr:\n%s", code, s.stderrSnapshot())
+	}
+	out := s.stdoutSnapshot()
+	if !strings.HasPrefix(out, "api-ratelimiter ") {
+		t.Errorf("--version stdout = %q, want it to start with the program name", out)
+	}
+	// The Go toolchain and platform are part of the line — they matter
+	// when the question is "what built this and for what".
+	for _, want := range []string{"go1.", runtime.GOOS, runtime.GOARCH} {
+		if !strings.Contains(out, want) {
+			t.Errorf("--version stdout = %q, want it to mention %q", out, want)
+		}
+	}
+	// Nothing else should have been logged: no startup banner, no
+	// listeners.
+	if strings.Contains(out, "starting") {
+		t.Errorf("--version started the service:\n%s", out)
 	}
 }
 

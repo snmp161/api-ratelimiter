@@ -1,0 +1,21 @@
+# Pinned linter set. CI passes only --timeout on the command line, so
+# without this file the effective set would be "whatever the installed
+# golangci-lint defaults to" — and that drifts between versions. The
+# list below is golangci-lint v1.59's default set plus gofmt.
+#
+# Integration tests (build tag `integration`) are deliberately NOT
+# linted: they are excluded by the default build tags, and enabling them
+# here would couple a frozen test harness to future linter releases.
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt

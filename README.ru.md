@@ -41,12 +41,40 @@ make build              # бинарь ./api-ratelimiter (LDFLAGS: -s -w, вер
 make test               # юнит-тесты
 make test-cover         # отчёт coverage.html
 make lint               # golangci-lint (требует установки golangci-lint)
+make dist VERSION=v1.2.3  # артефакты релиза: tarball + .deb + sha256 в ./dist
 
 # Integration-тесты (поднимают бинарь + miniredis + HTTP-пробы; через build-тег):
 go test -tags=integration -timeout=10m ./test/integration/...
 ```
 
 Требования: Go **1.21+**, Redis **6.0+**.
+
+### Сборка без CI
+
+Проект функционально закончен и активно не поддерживается, поэтому
+workflow'ы GitHub Actions протухнут раньше, чем код: запиненные actions
+депрекейтятся, `golangci-lint v1.59` привязан к той версии Go, под
+которую собран. На сборку это не влияет — всё, что делает CI,
+воспроизводится локально:
+
+```bash
+git clone https://github.com/snmp161/api-ratelimiter && cd api-ratelimiter
+go build ./cmd/api-ratelimiter        # любой Go >= 1.21; новые тулчейны собирают старые модули
+go test ./...                          # юнит-тесты
+make dist VERSION=v1.2.3               # ровно то, что публикует release.yml
+```
+
+Заметки на будущее:
+
+- **Не обновляй зависимости, чтобы «починить» сборку.** `go.mod` +
+  `go.sum` пинят всё, а модульный прокси хранит эти версии вечно. Если
+  сборка падает — почти наверняка дело в окружении, а не в пинах.
+- **Линтер не обязателен.** В `release.yml` он advisory и не блокирует
+  артефакты. Настоящие ворота — `go build` и `go test`.
+- **Тестовые зависимости не ломают бинарь.** `miniredis` и `goquery`
+  используются только в тестах, `go build ./cmd/...` их не тянет.
+- `make dist` запускает `nfpm` прямо из модульного прокси на запиненной
+  версии — устанавливать и поддерживать нечего.
 
 ## Запуск (dev)
 

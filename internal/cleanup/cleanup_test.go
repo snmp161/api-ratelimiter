@@ -20,18 +20,18 @@ import (
 )
 
 type fakeStore struct {
-	mu             sync.Mutex
-	exists         map[string]bool
-	abuseK         map[string]store.AbuseRecord
-	abuseIP        map[string]store.AbuseRecord
-	keyTTL         map[string]time.Duration
-	ipTTL          map[string]time.Duration
-	dbErr          error
-	upsertEr       error
-	limitExistsEr  error
-	unhealthy      bool
-	dbSizeCalls    atomic.Int64
-	panicOnDBSize  atomic.Int64 // panic on first N calls; decrements each call
+	mu            sync.Mutex
+	exists        map[string]bool
+	abuseK        map[string]store.AbuseRecord
+	abuseIP       map[string]store.AbuseRecord
+	keyTTL        map[string]time.Duration
+	ipTTL         map[string]time.Duration
+	dbErr         error
+	upsertEr      error
+	limitExistsEr error
+	unhealthy     bool
+	dbSizeCalls   atomic.Int64
+	panicOnDBSize atomic.Int64 // panic on first N calls; decrements each call
 }
 
 func newFakeStore() *fakeStore {

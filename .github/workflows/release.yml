@@ -14,8 +14,14 @@ permissions:
   contents: write
 
 jobs:
+  # Advisory only — see `needs:` on the artifacts job. golangci-lint is
+  # the fastest-rotting piece of this pipeline (pinned to a version
+  # built against a specific Go release), and a linter that stopped
+  # working must not be the reason a tagged release can't be cut. Tests
+  # still block.
   lint:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -38,7 +44,7 @@ jobs:
       - run: go test -race ./...
 
   artifacts:
-    needs: [lint, test]
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

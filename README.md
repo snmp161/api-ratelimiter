@@ -39,12 +39,42 @@ make build              # builds ./api-ratelimiter (LDFLAGS: -s -w, version from
 make test               # unit tests
 make test-cover         # coverage report (coverage.html)
 make lint               # golangci-lint (requires golangci-lint in PATH)
+make dist VERSION=v1.2.3  # release artifacts: tarball + .deb + sha256 in ./dist
 
 # Integration tests (spawn binary + miniredis + HTTP probes; build-tag gated):
 go test -tags=integration -timeout=10m ./test/integration/...
 ```
 
 Requires Go **1.21+**, Redis **6.0+**.
+
+### Building without CI
+
+This project is feature-complete and is not actively maintained, so the
+GitHub Actions workflows will rot before the code does — pinned actions
+get deprecated, `golangci-lint v1.59` is tied to the Go release it was
+built against. None of that blocks a build. Everything CI does is
+reproducible locally:
+
+```bash
+git clone https://github.com/snmp161/api-ratelimiter && cd api-ratelimiter
+go build ./cmd/api-ratelimiter        # any Go >= 1.21; newer toolchains build old modules
+go test ./...                          # unit tests
+make dist VERSION=v1.2.3               # exactly what release.yml publishes
+```
+
+Notes for a future self:
+
+- **Don't upgrade dependencies to make it build.** `go.mod` + `go.sum`
+  pin everything, and the module proxy keeps those versions forever. If
+  a build fails, the cause is almost certainly the environment, not the
+  pins.
+- **The linter is optional.** It is advisory in `release.yml` and never
+  blocks artifacts. `go build` and `go test` are the real gates.
+- **Test-only dependencies can't break the binary.** `miniredis` and
+  `goquery` are used by tests only; `go build ./cmd/...` doesn't touch
+  them.
+- `make dist` runs `nfpm` straight from the module proxy at a pinned
+  version — there is no tool to install and nothing to keep updated.
 
 ## Run (dev)
 

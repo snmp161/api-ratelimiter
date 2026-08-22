@@ -144,4 +144,3 @@ func (c *Config) WindowSeconds() int64 {
 	}
 	return 1
 }
-

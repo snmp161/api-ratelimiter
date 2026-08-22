@@ -316,6 +316,7 @@ TTL:    --abuse-ttl, обновляется при каждом upsert из clea
 | `--abuse-ttl`          | duration | `15m`                    | TTL записей в redisDB2/redisDB3 (Go duration)                   |
 | `--abuse-multiplier`   | int    | `10`                       | Множитель global-limit для счёта AbuseHits                      |
 | `--abuse-transfer-threshold` | int    | `3`                        | Минимальный AbuseHits для переноса счётчика в redisDB2/redisDB3           |
+| `--version`            | bool   | `false`                    | Напечатать версию (+ версию Go и платформу) и выйти с кодом 0   |
 
 ### Валидация при запуске
 
@@ -1409,6 +1410,8 @@ unit-уровень не проходит.
 - `/stubs/handler_api.php` лимитируется целиком (все action). Фильтрация по `$arg_action` — при необходимости доработка на уровне nginx/Angie.
 - Рост памяти между cleanup-циклами: все уникальные api_key и IP накапливаются в памяти в течение `--cleanup-interval`. При стабильном трафике с ограниченным числом уникальных ключей это несущественно. При аномальном трафике с большим числом уникальных IP — память может расти быстро до следующего cleanup.
 - Counter-метрики в веб-админке — накопленные с момента старта. Для динамики — Prometheus + `rate()`/`increase()`.
+- Подключение к Redis: только `--redis-addr` + `--redis-password`. **TLS и ACL-username не поддержаны**, номера логических БД (1/2/3) зашиты в `store/redis.go`. Managed-Redis с обязательным TLS (ElastiCache in-transit, Upstash) или Redis Cluster (где `SELECT` недоступен) потребуют правки кода, а не только флагов.
+- Флаг `--version` печатает версию, версию Go и платформу и завершает процесс с кодом 0, не открывая ни сокетов, ни соединения с Redis.
 
 ---
 

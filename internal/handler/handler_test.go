@@ -150,14 +150,14 @@ func TestCheck_IPValidation(t *testing.T) {
 		want   string
 	}{
 		{"1.2.3.4", "1.2.3.4"},
-		{"  1.2.3.4  ", "1.2.3.4"},   // whitespace trimmed
-		{"::1", "::1"},                // IPv6 loopback
+		{"  1.2.3.4  ", "1.2.3.4"}, // whitespace trimmed
+		{"::1", "::1"},             // IPv6 loopback
 		{"2001:db8::1", "2001:db8::1"},
 		{"", ""},
-		{"not-an-ip", ""},             // garbage rejected
-		{"../etc/passwd", ""},         // path-traversal style rejected
-		{"1.2.3.4, 5.6.7.8", ""},      // X-Forwarded-For style not accepted
-		{"999.999.999.999", ""},       // out-of-range IPv4 rejected
+		{"not-an-ip", ""},        // garbage rejected
+		{"../etc/passwd", ""},    // path-traversal style rejected
+		{"1.2.3.4, 5.6.7.8", ""}, // X-Forwarded-For style not accepted
+		{"999.999.999.999", ""},  // out-of-range IPv4 rejected
 	}
 	for _, tc := range cases {
 		d := &spyDecider{allow: true}

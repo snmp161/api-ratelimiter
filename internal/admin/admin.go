@@ -501,13 +501,13 @@ func (s *Server) handleLimits(w http.ResponseWriter, r *http.Request) {
 // ----- /abuse/keys, /abuse/ips -----
 
 type abuseRow struct {
-	Key        string
-	FirstSeen  time.Time
-	LastSeen   time.Time
-	Total      int64
-	BurstHits  int64
-	AbuseHits  int64
-	TTL        time.Duration
+	Key       string
+	FirstSeen time.Time
+	LastSeen  time.Time
+	Total     int64
+	BurstHits int64
+	AbuseHits int64
+	TTL       time.Duration
 }
 
 func (s *Server) handleAbuseKeys(w http.ResponseWriter, r *http.Request) {
