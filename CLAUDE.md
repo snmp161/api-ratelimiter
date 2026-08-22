@@ -129,10 +129,40 @@ to avoid double-applications (see commit `f7560cf` for the lesson).
   "</html>")` — catches mid-render aborts (see
   `TestRender_EmptyDatabaseRendersAllPages`).
 
+## Integration tests (`test/integration/`, tag `integration`)
+
+Run with `make test-integration` (~55s, spawns the real binary per
+test). Plan and known deviations: spec §17.2.
+
+- Everything goes through `spawnService(t, opts…)` in
+  `helpers_test.go`: builds once in `TestMain`, spawns the binary with
+  a per-test unix socket + free admin/metrics ports + `miniredis`, and
+  tears down via `t.Cleanup`. Options: `withFlag`, `withListen`,
+  `withSocketMode`, `withoutRedis`, `withRedisAddr`, `expectExit`.
+- **Redis that can die mid-test:** `newCtlRedis(t)` + `withRedisAddr` —
+  `stop()` / `start()` on a stable address. `miniredis.RunT` can't do
+  this (it only closes at cleanup).
+- **Window choice is the anti-flake tool.** Tests that need all their
+  requests in one slot use `--window=minute` plus a
+  `sameWindow(start, time.Now(), 60)` guard; slot-change tests use
+  `--window=second` and call `sleepToNextSecond()` first.
+- **Reading service state:** `s.metric(name, labels)` scrapes
+  `/metrics`; `s.topKeys(page)` / `s.topTotal(page, key)` read the
+  in-memory top table, `s.storedKeys(page)` the Redis-backed one —
+  substring-matching the page can't tell them apart. Poll with
+  `waitFor` / `s.waitCleanupRuns`, never a bare sleep.
+- Don't call `t.Fatalf`-ing helpers (`mustCheck`, `adminBody`, …) from
+  a spawned goroutine — use `s.doCheck` / a plain client and assert
+  after the goroutines join.
+- `goquery` is pinned to **v1.9.2**: v1.10+ requires `go >= 1.23` in
+  `go.mod` and the project stays on `go 1.21`. Never `go get @latest`
+  here — it silently rewrites the `go` directive.
+
 ## CI / release lifecycle
 
 - Push to any branch → `ci.yml` runs lint + vet + test (with coverage)
-  + build + smoke test.
+  + build + smoke test, then `integration` (needs `test`, runs the
+  tagged suite with `-race`).
 - Push tag `v*` → `release.yml` builds tarball + .deb via nfpm, creates
   GitHub Release with assets + auto-generated notes.
 - Concurrency: ci.yml cancels in-progress on the same ref; release.yml

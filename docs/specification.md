@@ -1045,7 +1045,9 @@ unit-тесты в принципе увидеть не могут: права �
 - `github.com/alicebob/miniredis/v2` — Redis в том же процессе (тот же
   что в unit-тестах `store` и `admin`)
 - `net/http` + `github.com/redis/go-redis/v9` — клиенты
-- `github.com/PuerkitoBio/goquery` — DOM-парсинг ответов админки (CSRF-токены, селекторы,
+- `github.com/PuerkitoBio/goquery` (пин `v1.9.2` — свежие версии
+  требуют `go >= 1.23` в `go.mod`, проект держит `go 1.21`) —
+  DOM-парсинг ответов админки (CSRF-токены, селекторы,
   XSS-escape). **Headless-браузер не используется** — JS в админке
   ограничен 30 строками UX-сахара с полным server-side fallback'ом
   (`actions_script` в `partials.html`), функциональные сценарии
@@ -1250,6 +1252,29 @@ go test -tags=integration -timeout=10m ./test/integration/...
 - 2×window inactivity: после паузы `window` запрос не пересоздаёт
   counter; после паузы `2×window` — пересоздаёт (regression на `186db15`)
 - Пустой `X-Original-URI` (без query) — graceful fallback на X-Real-IP
+
+#### Отклонения от плана (по факту реализации)
+
+Три пункта плана оказались недостижимы «как написано» — ниже что
+проверяется вместо них и почему:
+
+- **`/readyz` → 503 сразу после SIGTERM** (H). Внешне ненаблюдаемо:
+  `main()` выставляет `shuttingDown` и тут же гасит admin-listener
+  параллельно с остальным drain'ом, так что окно между «503» и
+  «connection refused» — микросекунды. `shutdown_test.go` проверяет
+  монотонность drain'а: после первого не-OK ответа `/readyz` больше
+  никогда не отвечает 200, и `/check` недоступен после выхода
+  процесса. Если хочется наблюдаемого draining-окна — гасить admin
+  после финального cleanup, это отдельное изменение в `main.go`.
+- **Cleanup при Redis down** (D). Админские страницы `/abuse/keys` и
+  `/abuse/ips` — это представление над redisDB2/redisDB3, при
+  недоступном Redis они отдают `502` (рендерится только `/`). Поэтому
+  «GC из памяти продолжает работать» проверяется через gauge
+  `ratelimit_counters_unknown_active`, а не через DOM.
+- **403 panic safety net** (K). Снаружи панику в `/check` не вызвать,
+  поэтому инвариант проверяется наблюдаемым контрактом: серия
+  враждебных запросов (8 KiB заголовки, битый UTF-8, мусорный
+  `X-Original-URI`) никогда не даёт 5xx и не роняет процесс.
 
 #### Что не покрыто на уровне integration
 
